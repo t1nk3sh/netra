@@ -1,0 +1,57 @@
+# Python virtual environment and caching
+.venv/
+venv/
+ENV/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
+dist/
+build/
+
+# Node environment
+node_modules/
+.eslintcache
+
+# IDEs and OS
+.vscode/
+.idea/
+.DS_Store
+
+# Project data and secrets
+.env
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/samples/*
+!data/samples/.gitkeep
+data/samples/test_traffic.pcap
+data/samples/zeek_test_traffic.pcap
+data/samples/labeled_flows.csv
+data/samples/zeek_logs/
+data/uploads/
+data/zeek/*
+!data/zeek/.gitkeep
+data/live_captures/
+data/live_zeek/
+data/sensor_config.json
+data/sensor_status.json
+
+# Model artifacts (large, generated)
+models/artifacts/*.joblib
+
+# Alerts (runtime)
+alerts/*.json
+
+# Logs
+logs/
+*.log
+
+# Zeek runtime
+zeek/logs/*
+!zeek/logs/.gitkeep

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "nicegui": {
+      "source": "bmsuisse/skills",
+      "sourceType": "github",
+      "skillPath": "skills/nicegui/SKILL.md",
+      "computedHash": "306955026fbbb75034e157b034635739764ed99561ae9b5f73c383d0ca71da16"
+    }
+  }
+}

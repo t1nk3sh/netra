@@ -1,0 +1,33 @@
+# Threat Detection Thresholds Configuration
+
+reconnaissance:
+  # Port scan detection parameters
+  port_scan:
+    min_unique_ports: 10
+    min_conn_rate: 2.0  # flows per second
+    min_failed_ratio: 0.5
+    min_confidence: 0.5
+
+  # Host scan (net sweep) detection parameters
+  host_scan:
+    min_unique_hosts: 5
+    min_conn_rate: 2.0
+    min_failed_ratio: 0.5
+    min_confidence: 0.5
+
+  # Common parameters
+  time_window: 10.0  # seconds to aggregate over for streaming detection
+
+ddos:
+  syn_flood:
+    min_syn_rate: 10.0  # connection attempts/sec
+    min_flows_count: 30
+    min_failed_ratio: 0.8
+  udp_flood:
+    min_udp_rate: 20.0  # flows/sec
+    min_flows_count: 50
+  reflection:
+    min_rate: 15.0  # packets/sec
+    min_flows_count: 30
+    reflection_ports: [53, 123, 161, 1900]
+
