@@ -1,99 +1,185 @@
-# NETra - ML-Based Network Threat Detection Enclave (Passive Monitor)
+# NETra — ML-Based Network Threat Detection System
 
-A passive, strictly read-only unidirectional network threat monitoring prototype. It captures raw network traffic, parses it into connection logs via Zeek, extracts time-series features, runs ML inference, and displays security alerts in real-time on a modern SaaS-style NiceGUI dashboard.
-
----
-
-## 🛡️ Passive Operational Constraints
-This dashboard works strictly as a passive monitor:
-* **No network injection**: Zero probes, active scans, or return-path communications are sent back into the monitored networks.
-* **No decryption**: Traffic analysis is strictly metadata-based (resolving protocol ratios, packet gaps, and connection entropy headers in TLS/DNS) with zero payload decryption.
-* **No disruption**: Implements strictly telemetry alerts without trigger mitigation commands.
+NETra is a passive, unidirectional network threat detection and forensic analysis system. It captures raw IP traffic, extracts high-dimensional flow statistics and metadata via Zeek and Scapy, evaluates flows against machine learning models (Random Forest, XGBoost, Isolation Forest), and delivers real-time threat intelligence through a high-performance NiceGUI dashboard.
 
 ---
 
-## ⚙️ Prerequisites & Tool Checklist
-To configure this project, ensure the following are present on the host:
-* **Python 3.12+**
-* **Docker / Docker Compose** (for running the containerized Zeek instance)
-* **tcpdump / Scapy** (for raw socket sniffing)
+## Key Features
+
+- **Unidirectional Passive Monitoring**: Strictly read-only traffic capture with zero return-path communication, network injection, or active probing.
+- **Multi-Model ML Detection Engine**: Pre-trained on CIC-IDS2017 benchmarks (Random Forest 98.3% F1, XGBoost 98.8% F1, Isolation Forest anomaly detector) across 37 statistical and connection-state features.
+- **Reactive NiceGUI SOC Dashboard**: Clean, modern interface (Port 8501) featuring 7 operational views:
+  - **Overview**: Threat status, active alert counters, telemetry gauges, and threat distribution charts.
+  - **Alerts**: Searchable security events table with confidence scores, severity levels, and evidence payloads.
+  - **Traffic**: Live ingress rate dynamics, connection state health, targeted port analysis, protocol breakdown, and flow stream.
+  - **PCAP Analysis**: Deep forensic packet inspection, automated flow reconstruction, progress tracking, and intrusion summaries.
+  - **Threat Analysis**: Behavioral threat cards, automated signature discovery, and MITRE-aligned classification.
+  - **Models**: Live model registry, in-app benchmark evaluator against sample datasets, and one-click production model activation.
+  - **System**: Service health telemetry, sensor status, pipeline latency metrics, and API diagnostics.
+- **Dynamic Model Switching**: Hot-swap active inference models in real time without dropping active packet captures.
+- **PCAP Forensic Pipeline**: Upload or select stored PCAPs to reconstruct bidirectional sessions and score threat vectors asynchronously.
+- **Dual Theme Support**: Dark and light modes with persistent styling and responsive ECharts telemetry.
 
 ---
 
-## 🚀 Setup & Launch
+## Passive Operational Constraints
+
+NETra is architected strictly as a non-intrusive network observer:
+1. **No Network Injection**: Zero SYN scans, ping sweeps, DNS lookups, or return-path traffic are emitted to monitored networks.
+2. **Metadata & Flow Analysis**: Inspection relies on packet headers, entropy, connection durations, byte ratios, and inter-arrival intervals without decrypting TLS payloads.
+3. **Telemetry-Only Action**: Generates passive security alerts and structured audit logs without executing disruptive firewall triggers or RST packet injection.
+
+---
+
+## Architecture Overview
+
+```
+                          [ Monitored Network TAP / SPAN / Interface ]
+                                              │ (Passive Sniffing)
+                                              ▼
+                                   ┌──────────────────────┐
+                                   │  Scapy Live Sniffer  │
+                                   │  & PCAP Ingestion    │
+                                   └──────────┬───────────┘
+                                              │ (PCAPs / Raw Packets)
+                                              ▼
+                                   ┌──────────────────────┐
+                                   │ Zeek Log Parser /    │
+                                   │ Scapy Flow Extractor │
+                                   └──────────┬───────────┘
+                                              │ (Normalized Flows)
+                                              ▼
+                                   ┌──────────────────────┐
+                                   │ ML Feature Pipeline  │
+                                   │ (37 Flow Features)   │
+                                   └──────────┬───────────┘
+                                              │
+                      ┌───────────────────────┴───────────────────────┐
+                      ▼                                               ▼
+           ┌──────────────────────┐                       ┌──────────────────────┐
+           │ ML Inference Engine  │                       │ Rule-based Threat    │
+           │ (RF / XGB / IsoForest│                       │ Detectors (DDoS, etc)│
+           └──────────┬───────────┘                       └──────────┬───────────┘
+                      │                                               │
+                      └───────────────────────┬───────────────────────┘
+                                              │ (Alerts & Flow Telemetry)
+                                              ▼
+                                   ┌──────────────────────┐
+                                   │ FastAPI Backend      │ (Port 8000)
+                                   │ REST & WebSockets    │
+                                   └──────────┬───────────┘
+                                              │
+                                              ▼
+                                   ┌──────────────────────┐
+                                   │ NiceGUI SOC App      │ (Port 8501)
+                                   │ (Reactive Dashboard) │
+                                   └──────────────────────┘
+```
+
+---
+
+## Prerequisites
+
+- **Linux** (Kernel 5.x / 6.x recommended)
+- **Python 3.12+**
+- **Docker** (optional, for Zeek containerized log parsing)
+- **libpcap / tcpdump** (for raw packet capture capabilities)
+
+---
+
+## Quick Start
 
 ### 1. One-Click Setup
-Initialize environment directories, python virtualenvs, install dependencies, fetch the required Zeek image, and train the baseline model:
+Create the virtual environment, install dependencies, fetch the Zeek Docker image, and train the baseline model:
 ```bash
 ./setup.sh
 ```
 
-### 2. Live Monitoring permissions (Optional)
-To run live interface captures without standard root privileges, grant raw packet capabilities to the Python binary in the virtualenv:
+### 2. Live Capture Permissions (Optional)
+To capture on live network interfaces without running as root:
 ```bash
 sudo setcap cap_net_raw,cap_net_admin+eip $(readlink -f .venv/bin/python)
 ```
 
-### 3. Launching Services
-Run the unified launcher command to start the backend uvicorn service, NiceGUI frontend, and the ingestion sensor:
+### 3. Launch Services
+Start the FastAPI backend (port 8000), the NiceGUI dashboard (port 8501), and the live detection sensor:
 ```bash
+# Replay mode (uses sample traffic)
 ./start.sh
-```
-* **Options:**
-  * Launch help options: `./start.sh --help`
-  * Launch live monitoring: `./start.sh --live --interface=wlo1`
 
----
-
-## 🧠 Machine Learning Model Training
-
-The ML classifiers map flow states to anomaly likelihood metrics using the preprocessor pipeline.
-
-### Option A: Train on Default Predefined Dataset
-Train on the predefined CSV logs that automatically ship with the code:
-```bash
-PYTHONPATH=. .venv/bin/python scripts/train_default_model.py
-```
-
-### Option B: Train on Custom Datasets (e.g. CIC-IDS2017)
-To import external files:
-1. Place the dataset CSV in a folder (e.g., `data/samples/`).
-2. Run training with custom paths and models (`random_forest`, `xgboost`, `isolation_forest`):
-   ```bash
-   PYTHONPATH=. .venv/bin/python scripts/train_default_model.py \
-       --data data/samples/your_custom_dataset.csv \
-       --model-type xgboost \
-       --output models/artifacts/default_rf.joblib
-   ```
-* **Schema standardizing**: The pipeline automatically aligns arbitrary csv parameters, renames classification labels to standardize them, and converts text class tags (e.g. `'BENIGN'`) to standard integers.
-
----
-
-## 🐳 Dockerizing the Application
-
-To wrap the threat engine and dashboard services inside containers:
-
-### 1. Launch with Docker Compose
-Run the entire platform (FastAPI, Redis, NiceGUI, and Sensor) using Docker Compose:
-```bash
-docker-compose up --build
-```
-
-### 2. Native Registry Build
-Alternatively, build single components natively:
-```bash
-# Build Backend
-docker build -t threat-backend -f docker/Dockerfile.backend .
-
-# Build Dashboard UI
-docker build -t threat-dashboard -f docker/Dockerfile.dashboard .
+# Live interface capture mode
+./start.sh --live --interface=wlo1
 ```
 
 ---
 
-## 🧪 Testing
-To verify code logic and integration components, execute:
+## Machine Learning & Model Registry
+
+The inference engine transforms raw connection flows into 37 standardized features covering byte rates, packet ratios, TCP state sequences, and duration entropy.
+
+### Pre-Trained Models (`models/artifacts/`)
+- `default_rf.joblib`: Active production Random Forest model.
+- `cic_rf.joblib`: Random Forest trained on 200k CIC-IDS2017 flows (98.3% F1 score).
+- `cic_xgboost.joblib`: XGBoost classifier for ultra-low latency inference (<0.001 ms/flow, 98.8% F1 score).
+- `cic_isolation_forest.joblib`: Unsupervised anomaly detector for zero-day threat detection.
+- `sample_rf.joblib`: Synthetic baseline classifier.
+
+### Training Custom Models
 ```bash
-.venv/bin/pytest --tb=short
+# Train Random Forest on custom CSV/Parquet dataset
+PYTHONPATH=. .venv/bin/python scripts/train_default_model.py \
+    --data data/samples/your_dataset.parquet \
+    --model-type random_forest \
+    --output models/artifacts/custom_rf.joblib
+
+# Train XGBoost
+PYTHONPATH=. .venv/bin/python scripts/train_default_model.py \
+    --data data/samples/cic_combined.parquet \
+    --model-type xgboost \
+    --output models/artifacts/cic_xgboost.joblib
 ```
-*Processes all unit and e2e integration runs (207 passed).*
+
+---
+
+## Project Structure
+
+```
+├── backend/               # FastAPI backend endpoints (/alerts, /flows, /analyze_pcap)
+├── capture/               # Scapy live capture sniffer & forensic PCAP analyzer
+├── config/                # Threshold and classification configurations
+├── dashboard/             # NiceGUI dashboard application
+│   ├── nicegui_app.py     # Main reactive dashboard UI (7 pages, theme engine)
+│   ├── services/          # Backend API client integration
+│   └── utils/             # Formatting and timezone utilities
+├── detection/             # Rule-based threat detectors (DDoS, Port Scans)
+├── features/              # Statistical and flow feature extractors
+├── inference/             # ML predictor runtime and threat classifier
+├── models/                # Model training, preprocessing pipeline, and artifacts
+├── scripts/               # Launcher, dataset combiners, and live sensor daemon
+├── streaming/             # Tumbling window manager and streaming pipeline
+├── tests/                 # Unit, backend, and integration test suite
+├── zeek/                  # Zeek container runner and log parser
+├── setup.sh               # One-click environment bootstrap script
+└── start.sh               # Unified service launcher script
+```
+
+---
+
+## Testing
+
+Run the full test suite (214 tests):
+```bash
+.venv/bin/pytest --tb=short -q
+```
+
+Run specific test modules:
+```bash
+# Test ML predictor and threat classifier
+.venv/bin/pytest tests/unit/test_predictor.py --tb=short
+
+# Test PCAP forensic analyzer
+.venv/bin/pytest tests/unit/test_pcap_analyzer.py --tb=short
+
+# Test backend REST endpoints
+.venv/bin/pytest tests/unit/test_backend.py --tb=short
+```
