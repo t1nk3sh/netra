@@ -118,7 +118,7 @@ else
 fi
 SENSOR_PID=$!
 
-# Wait briefly for Streamlit and Sensor to initialize
+# Wait briefly for Dashboard and Sensor to initialize
 sleep 2
 
 # 5. Open Default Browser

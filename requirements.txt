@@ -12,8 +12,6 @@ psycopg[binary]
 pyyaml
 pytest
 scapy
-streamlit
-plotly
 httpx
 nicegui
 kaggle

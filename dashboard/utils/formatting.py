@@ -1,4 +1,4 @@
-"""Formatting and styling utilities for the Streamlit dashboard components."""
+"""Formatting and styling utilities for the dashboard components."""
 
 from __future__ import annotations
 

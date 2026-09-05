@@ -1,4 +1,4 @@
-"""API Client for connecting the Streamlit dashboard to the FastAPI backend."""
+"""API Client for connecting the NiceGUI dashboard to the FastAPI backend."""
 
 from __future__ import annotations
 

@@ -35,7 +35,7 @@ sudo setcap cap_net_raw,cap_net_admin+eip $(readlink -f .venv/bin/python)
 ```
 
 ### 3. Launching Services
-Run the unified launcher command to start the backend uvicorn service, Streamlit frontend, and the ingestion sensor:
+Run the unified launcher command to start the backend uvicorn service, NiceGUI frontend, and the ingestion sensor:
 ```bash
 ./start.sh
 ```
@@ -74,7 +74,7 @@ To import external files:
 To wrap the threat engine and dashboard services inside containers:
 
 ### 1. Launch with Docker Compose
-Run the entire platform (FastAPI, Redis, Streamlit, and Sensor) using Docker Compose:
+Run the entire platform (FastAPI, Redis, NiceGUI, and Sensor) using Docker Compose:
 ```bash
 docker-compose up --build
 ```
