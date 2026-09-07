@@ -151,3 +151,18 @@ class TestAlertManager:
 
         assert cb_called is True
         assert received_alert == alert
+
+    def test_alert_manager_max_history_size(self):
+        mgr = AlertManager(max_history_size=5)
+        for i in range(10):
+            alert = Alert(
+                timestamp=datetime.now(timezone.utc) + timedelta(seconds=i * 20),
+                threat_class="port_scan",
+                confidence=0.8,
+                severity="medium",
+                source=f"10.0.0.{i}",
+            )
+            mgr.process_alert(alert)
+
+        assert len(mgr.alert_history) == 5
+        assert mgr.alert_history[-1].source == "10.0.0.9"

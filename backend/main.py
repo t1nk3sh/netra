@@ -29,7 +29,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -263,6 +263,10 @@ def list_available_pcaps() -> List[Dict[str, Any]]:
     return pcap_files
 
 
+MAX_UPLOAD_SIZE_BYTES = 200 * 1024 * 1024  # 200 MB
+ALLOWED_PCAP_EXTENSIONS = {".pcap", ".pcapng", ".cap"}
+
+
 @app.post("/analyze_pcap")
 async def analyze_uploaded_pcap(
     file: Optional[UploadFile] = None,
@@ -273,14 +277,53 @@ async def analyze_uploaded_pcap(
     target_path: Path
     
     if file is not None and file.filename:
+        # Sanitize filename to prevent path traversal
+        safe_filename = Path(file.filename).name
+        if not safe_filename or safe_filename.startswith("."):
+            raise HTTPException(status_code=400, detail="Invalid filename provided")
+
+        suffix = Path(safe_filename).suffix.lower()
+        if suffix not in ALLOWED_PCAP_EXTENSIONS and not safe_filename.endswith((".pcap.gz", ".pcapng.gz")):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Unsupported file type '{suffix}'. Allowed: {', '.join(sorted(ALLOWED_PCAP_EXTENSIONS))}"
+            )
+
         uploads_dir = Path("data/uploads")
         uploads_dir.mkdir(parents=True, exist_ok=True)
-        
-        target_path = uploads_dir / file.filename
-        content = await file.read()
-        target_path.write_bytes(content)
+        target_path = uploads_dir / safe_filename
+
+        # Stream write in chunks with size limit enforcement
+        total_bytes = 0
+        chunk_size = 64 * 1024
+        try:
+            with open(target_path, "wb") as out_file:
+                while chunk := await file.read(chunk_size):
+                    total_bytes += len(chunk)
+                    if total_bytes > MAX_UPLOAD_SIZE_BYTES:
+                        target_path.unlink(missing_ok=True)
+                        raise HTTPException(
+                            status_code=413, 
+                            detail=f"File exceeds maximum upload limit of {MAX_UPLOAD_SIZE_BYTES // (1024 * 1024)} MB"
+                        )
+                    out_file.write(chunk)
+        except HTTPException:
+            raise
+        except Exception as e:
+            target_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=500, detail=f"Failed to save upload: {e}")
     elif file_path:
-        target_path = Path(file_path)
+        target_path = Path(file_path).resolve()
+        # Security validation on file path
+        if not target_path.exists():
+            raise HTTPException(status_code=404, detail=f"PCAP file not found: {file_path}")
+        if not target_path.is_file():
+            raise HTTPException(status_code=400, detail=f"Path is not a regular file: {file_path}")
+        if target_path.suffix.lower() not in ALLOWED_PCAP_EXTENSIONS:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Target file does not have a supported PCAP extension ({', '.join(sorted(ALLOWED_PCAP_EXTENSIONS))})"
+            )
     else:
         raise HTTPException(status_code=400, detail="Either file upload or file_path must be provided")
 
@@ -301,8 +344,8 @@ async def websocket_alerts(websocket: WebSocket) -> None:
     await ws_manager.connect(websocket)
     try:
         while True:
-            # Sleep to keep the connection open and allow ASGI messages
-            await asyncio.sleep(0.1)
+            # Low CPU idle polling interval for active WebSocket keepalive
+            await asyncio.sleep(1.0)
     except WebSocketDisconnect:
         ws_manager.disconnect(websocket)
     except Exception as e:

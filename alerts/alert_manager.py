@@ -21,20 +21,39 @@ class AlertManager:
     def __init__(
         self,
         dedup_window_sec: float = 60.0,
+        max_history_size: int = 10000,
         dispatch_callback: Callable[[Alert], None] | None = None,
     ) -> None:
         self.dedup_window_sec = dedup_window_sec
+        self.max_history_size = max_history_size
         self.dispatch_callback = dispatch_callback
         
         # In-memory store of recent alerts for deduplication mapping:
         # (source, threat_class) -> latest Alert
         self.active_alerts: Dict[tuple[str, str], Alert] = {}
         
-        # History of all dispatched alerts
+        # History of all dispatched alerts (capped to max_history_size)
         self.alert_history: List[Alert] = []
         
         # Track alerts per source IP to correlate severity elevations
         self.source_history: Dict[str, List[Alert]] = {}
+
+    def _prune_caches(self, current_ts: float) -> None:
+        """Prune expired items from in-memory deduplication and correlation tables."""
+        dedup_cutoff = current_ts - (self.dedup_window_sec * 2.0)
+        
+        # Clean stale active_alerts
+        expired_keys = [
+            k for k, v in self.active_alerts.items()
+            if (v.timestamp.replace(tzinfo=timezone.utc) if v.timestamp.tzinfo is None else v.timestamp).timestamp() < dedup_cutoff
+        ]
+        for k in expired_keys:
+            del self.active_alerts[k]
+
+        # Clean empty source_history IP keys
+        empty_ips = [ip for ip, hist in self.source_history.items() if not hist]
+        for ip in empty_ips:
+            del self.source_history[ip]
 
     def process_alert(self, alert: Alert) -> bool:
         """Process a newly generated alert.
@@ -82,6 +101,13 @@ class AlertManager:
         # Update deduplication cache
         self.active_alerts[key] = alert
         self.alert_history.append(alert)
+
+        # Enforce memory cap on alert history
+        if len(self.alert_history) > self.max_history_size:
+            self.alert_history = self.alert_history[-self.max_history_size:]
+
+        # Prune memory caches periodically
+        self._prune_caches(ts.timestamp())
 
         # Dispatch alert
         if self.dispatch_callback:

@@ -37,6 +37,7 @@ class TestE2EPipeline:
         pipeline = StreamingPipeline(
             window_size_sec=10.0,
             model_path=default_model,
+            ml_threshold=0.3,
             alert_callback=callback,
         )
 

@@ -33,11 +33,13 @@ class StreamingPipeline:
         self,
         window_size_sec: float = 5.0,
         model_path: str | Path | None = None,
+        ml_threshold: float | None = None,
         recon_thresholds: Dict[str, Any] | None = None,
         ddos_thresholds: Dict[str, Any] | None = None,
         alert_callback: Callable[[Alert], None] | None = None,
     ) -> None:
         self.window_manager = WindowManager(window_size_sec)
+        self.ml_threshold = ml_threshold
         
         # Load detectors
         self.recon_detector = ReconnaissanceDetector(recon_thresholds)
@@ -116,7 +118,7 @@ class StreamingPipeline:
                 ml_features_df = extract_per_flow_features(df)
                 
                 # Predict
-                ml_predictions = self.predictor.predict(ml_features_df)
+                ml_predictions = self.predictor.predict(ml_features_df, threshold=self.ml_threshold)
                 
                 for idx, pred in enumerate(ml_predictions):
                     if pred["threat_predicted"]:

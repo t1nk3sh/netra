@@ -52,9 +52,12 @@ def _safe_float(val: Any, default: float = 0.0) -> float:
 
 
 def _extract_scapy_flows(pcap_path: Path) -> List[Dict[str, Any]]:
-    """Fallback flow extractor using Scapy when Zeek is unavailable or produces no logs."""
-    # 5-tuple -> list of packets
-    flow_map: Dict[tuple, list] = defaultdict(list)
+    """Fallback flow extractor using Scapy when Zeek is unavailable or produces no logs.
+
+    Optimized with streaming accumulators to maintain O(flows) memory complexity.
+    """
+    # Canonical 5-tuple -> running flow state dictionary
+    flow_map: Dict[tuple, dict] = {}
     
     with ScapyPcapReader(str(pcap_path)) as reader:
         for idx, pkt in enumerate(reader):
@@ -64,7 +67,6 @@ def _extract_scapy_flows(pcap_path: Path) -> List[Dict[str, Any]]:
             ip_layer = pkt["IP"] if pkt.haslayer("IP") else pkt["IPv6"]
             src_ip = ip_layer.src
             dst_ip = ip_layer.dst
-            proto_num = ip_layer.proto if pkt.haslayer("IP") else ip_layer.nh
             
             sport = None
             dport = None
@@ -87,37 +89,74 @@ def _extract_scapy_flows(pcap_path: Path) -> List[Dict[str, Any]]:
             key = (src_ip, dst_ip, sport, dport, proto_str)
             rev_key = (dst_ip, src_ip, dport, sport, proto_str)
             
-            target_key = key if key in flow_map or rev_key not in flow_map else rev_key
-            flow_map[target_key].append({
-                "ts": float(pkt.time),
-                "len": len(pkt),
-                "is_orig": (target_key == key),
-                "tcp_flags": tcp_flags,
-            })
+            pkt_ts = float(pkt.time)
+            pkt_len = len(pkt)
+            is_orig = True
+            
+            if key in flow_map:
+                target_key = key
+            elif rev_key in flow_map:
+                target_key = rev_key
+                is_orig = False
+            else:
+                target_key = key
+                flow_map[target_key] = {
+                    "start_ts": pkt_ts,
+                    "end_ts": pkt_ts,
+                    "orig_pkts": 0,
+                    "resp_pkts": 0,
+                    "orig_bytes": 0,
+                    "resp_bytes": 0,
+                    "syn_count": 0,
+                    "ack_count": 0,
+                    "fin_count": 0,
+                    "rst_count": 0,
+                    "total_pkts": 0,
+                }
+
+            acc = flow_map[target_key]
+            if pkt_ts < acc["start_ts"]:
+                acc["start_ts"] = pkt_ts
+            if pkt_ts > acc["end_ts"]:
+                acc["end_ts"] = pkt_ts
+
+            acc["total_pkts"] += 1
+            if is_orig:
+                acc["orig_pkts"] += 1
+                acc["orig_bytes"] += pkt_len
+            else:
+                acc["resp_pkts"] += 1
+                acc["resp_bytes"] += pkt_len
+
+            if "S" in tcp_flags:
+                acc["syn_count"] += 1
+            if "A" in tcp_flags:
+                acc["ack_count"] += 1
+            if "F" in tcp_flags:
+                acc["fin_count"] += 1
+            if "R" in tcp_flags:
+                acc["rst_count"] += 1
 
     records = []
-    for (src_ip, dst_ip, sport, dport, proto_str), pkts in flow_map.items():
-        if not pkts:
+    for (src_ip, dst_ip, sport, dport, proto_str), acc in flow_map.items():
+        if acc["total_pkts"] == 0:
             continue
         
-        pkts_sorted = sorted(pkts, key=lambda x: x["ts"])
-        start_ts = pkts_sorted[0]["ts"]
-        end_ts = pkts_sorted[-1]["ts"]
+        start_ts = acc["start_ts"]
+        end_ts = acc["end_ts"]
         duration = max(0.0001, end_ts - start_ts)
         
-        orig_pkts = [p for p in pkts_sorted if p["is_orig"]]
-        resp_pkts = [p for p in pkts_sorted if not p["is_orig"]]
-        
-        orig_bytes = sum(p["len"] for p in orig_pkts)
-        resp_bytes = sum(p["len"] for p in resp_pkts)
+        orig_bytes = acc["orig_bytes"]
+        resp_bytes = acc["resp_bytes"]
         total_bytes = orig_bytes + resp_bytes
-        total_pkts = len(pkts_sorted)
+        orig_pkts = acc["orig_pkts"]
+        resp_pkts = acc["resp_pkts"]
+        total_pkts = acc["total_pkts"]
         
-        # History flags summary
-        syn_count = sum(1 for p in pkts_sorted if "S" in p.get("tcp_flags", ""))
-        ack_count = sum(1 for p in pkts_sorted if "A" in p.get("tcp_flags", ""))
-        fin_count = sum(1 for p in pkts_sorted if "F" in p.get("tcp_flags", ""))
-        rst_count = sum(1 for p in pkts_sorted if "R" in p.get("tcp_flags", ""))
+        syn_count = acc["syn_count"]
+        ack_count = acc["ack_count"]
+        fin_count = acc["fin_count"]
+        rst_count = acc["rst_count"]
         
         # Determine conn_state approximation
         conn_state = "SF"
@@ -139,18 +178,18 @@ def _extract_scapy_flows(pcap_path: Path) -> List[Dict[str, Any]]:
             "orig_bytes": orig_bytes,
             "resp_bytes": resp_bytes,
             "total_bytes": total_bytes,
-            "orig_pkts": len(orig_pkts),
-            "resp_pkts": len(resp_pkts),
+            "orig_pkts": orig_pkts,
+            "resp_pkts": resp_pkts,
             "total_pkts": total_pkts,
             "packets_per_sec": total_pkts / duration,
             "bytes_per_sec": total_bytes / duration,
-            "orig_packets_per_sec": len(orig_pkts) / duration,
-            "resp_packets_per_sec": len(resp_pkts) / duration,
+            "orig_packets_per_sec": orig_pkts / duration,
+            "resp_packets_per_sec": resp_pkts / duration,
             "avg_pkt_size": total_bytes / max(1, total_pkts),
-            "avg_pkt_size_orig": orig_bytes / max(1, len(orig_pkts)),
-            "avg_pkt_size_resp": resp_bytes / max(1, len(resp_pkts)),
+            "avg_pkt_size_orig": orig_bytes / max(1, orig_pkts),
+            "avg_pkt_size_resp": resp_bytes / max(1, resp_pkts),
             "byte_ratio": orig_bytes / max(1, resp_bytes),
-            "pkt_ratio": len(orig_pkts) / max(1, len(resp_pkts)),
+            "pkt_ratio": orig_pkts / max(1, resp_pkts),
             "is_tcp": 1 if proto_str == "TCP" else 0,
             "is_udp": 1 if proto_str == "UDP" else 0,
             "hist_syn_count": syn_count,
@@ -159,7 +198,7 @@ def _extract_scapy_flows(pcap_path: Path) -> List[Dict[str, Any]]:
             "hist_data_count": max(0, total_pkts - syn_count - fin_count - rst_count),
             "hist_fin_count": fin_count,
             "hist_rst_count": rst_count,
-            "hist_length": len(pkts_sorted),
+            "hist_length": total_pkts,
             f"conn_state_{conn_state}": 1,
         }
         records.append(rec)

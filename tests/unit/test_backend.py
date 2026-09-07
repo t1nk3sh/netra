@@ -167,6 +167,21 @@ class TestBackendREST:
         response = client.post("/analyze_pcap?file_path=non_existent.pcap")
         assert response.status_code == 404
 
+    def test_analyze_pcap_invalid_extension(self, tmp_path):
+        bad_file = tmp_path / "malicious.sh"
+        bad_file.write_text("echo pwned")
+        response = client.post(f"/analyze_pcap?file_path={bad_file}")
+        assert response.status_code == 400
+        assert "supported PCAP extension" in response.json()["detail"]
+
+    def test_analyze_pcap_upload_invalid_extension(self):
+        response = client.post(
+            "/analyze_pcap",
+            files={"file": ("malicious.exe", b"binarycontent", "application/octet-stream")}
+        )
+        assert response.status_code == 400
+        assert "Unsupported file type" in response.json()["detail"]
+
 
 class MockWebSocket:
     def __init__(self):
