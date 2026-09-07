@@ -18,7 +18,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-EXPECTED_LOGS = ["conn.log", "dns.log", "ssl.log"]
+EXPECTED_LOGS = ["conn.log", "dns.log", "ssl.log", "http.log", "weird.log", "notice.log", "dhcp.log"]
 DOCKER_IMAGE = "zeek/zeek:latest"
 
 

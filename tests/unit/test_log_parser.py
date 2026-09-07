@@ -11,6 +11,10 @@ from zeek.log_parser import (
     parse_conn_log,
     parse_dns_log,
     parse_ssl_log,
+    parse_http_log,
+    parse_weird_log,
+    parse_notice_log,
+    parse_dhcp_log,
     _detect_format,
     _zeek_ts_to_datetime,
 )
@@ -162,6 +166,50 @@ class TestParseSslLog:
         df = parse_ssl_log(SSL_LOG)
         assert "src_ip" in df.columns
         assert "dst_ip" in df.columns
+
+
+class TestParseAdditionalLogs:
+    def test_parse_http_log(self, tmp_path: Path):
+        http_file = tmp_path / "http.log"
+        http_file.write_text(
+            '{"ts":1700000000.0,"uid":"Chttp1","id.orig_h":"10.0.0.1","id.orig_p":54321,"id.resp_h":"93.184.216.34","id.resp_p":80,"method":"GET","host":"example.com","uri":"/index.html","status_code":200}\n'
+        )
+        df = parse_http_log(http_file)
+        assert len(df) == 1
+        assert df["src_ip"].iloc[0] == "10.0.0.1"
+        assert df["method"].iloc[0] == "GET"
+        assert df["status_code"].iloc[0] == 200
+
+    def test_parse_weird_log(self, tmp_path: Path):
+        weird_file = tmp_path / "weird.log"
+        weird_file.write_text(
+            '{"ts":1700000000.0,"uid":"Cweird1","id.orig_h":"10.0.0.2","id.orig_p":12345,"id.resp_h":"192.168.1.1","id.resp_p":80,"name":"bad_TCP_checksum","notice":false}\n'
+        )
+        df = parse_weird_log(weird_file)
+        assert len(df) == 1
+        assert df["src_ip"].iloc[0] == "10.0.0.2"
+        assert df["name"].iloc[0] == "bad_TCP_checksum"
+
+    def test_parse_notice_log(self, tmp_path: Path):
+        notice_file = tmp_path / "notice.log"
+        notice_file.write_text(
+            '{"ts":1700000000.0,"uid":"Cnot1","id.orig_h":"10.0.0.3","id.orig_p":44444,"id.resp_h":"192.168.1.10","id.resp_p":443,"note":"SSL::Invalid_Server_Cert","msg":"Self-signed cert"}\n'
+        )
+        df = parse_notice_log(notice_file)
+        assert len(df) == 1
+        assert df["src_ip"].iloc[0] == "10.0.0.3"
+        assert df["note"].iloc[0] == "SSL::Invalid_Server_Cert"
+
+    def test_parse_dhcp_log(self, tmp_path: Path):
+        dhcp_file = tmp_path / "dhcp.log"
+        dhcp_file.write_text(
+            '{"ts":1700000000.0,"uids":["Cdhcp1"],"client_addr":"10.0.0.50","server_addr":"10.0.0.1","mac":"aa:bb:cc:dd:ee:ff","host_name":"workstation-01","lease_time":86400}\n'
+        )
+        df = parse_dhcp_log(dhcp_file)
+        assert len(df) == 1
+        assert df["client_addr"].iloc[0] == "10.0.0.50"
+        assert df["host_name"].iloc[0] == "workstation-01"
+        assert df["lease_time"].iloc[0] == 86400
 
 
 class TestParseJsonFormat:

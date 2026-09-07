@@ -45,6 +45,34 @@ SSL_COLUMNS = [
     "sni_matches_cert", "validation_status",
 ]
 
+HTTP_COLUMNS = [
+    "ts", "uid", "id.orig_h", "id.orig_p", "id.resp_h", "id.resp_p",
+    "trans_depth", "method", "host", "uri", "referrer", "version",
+    "user_agent", "request_body_len", "response_body_len", "status_code",
+    "status_msg", "info_code", "info_msg", "tags", "username",
+    "password", "proxied", "orig_fuids", "orig_filenames", "orig_mime_types",
+    "resp_fuids", "resp_filenames", "resp_mime_types",
+]
+
+WEIRD_COLUMNS = [
+    "ts", "uid", "id.orig_h", "id.orig_p", "id.resp_h", "id.resp_p",
+    "name", "addl", "notice", "peer", "source",
+]
+
+NOTICE_COLUMNS = [
+    "ts", "uid", "id.orig_h", "id.orig_p", "id.resp_h", "id.resp_p",
+    "fuid", "file_mime_type", "file_desc", "proto", "note", "msg",
+    "sub", "src", "dst", "p", "n", "peer_descr", "actions",
+    "suppress_for", "dropped",
+]
+
+DHCP_COLUMNS = [
+    "ts", "uids", "client_addr", "server_addr", "mac", "host_name",
+    "client_fqdn", "domain", "requested_addr", "assigned_addr",
+    "lease_time", "client_message", "server_message", "msg_types",
+    "duration",
+]
+
 COLUMN_RENAMES = {
     "id.orig_h": "src_ip",
     "id.orig_p": "src_port",
@@ -56,11 +84,14 @@ NUMERIC_COLUMNS = {
     "ts", "duration", "orig_bytes", "resp_bytes", "missed_bytes",
     "orig_pkts", "orig_ip_bytes", "resp_pkts", "resp_ip_bytes",
     "src_port", "dst_port", "rtt", "trans_id",
+    "request_body_len", "response_body_len", "status_code", "info_code",
+    "trans_depth", "lease_time",
 }
 
 BOOLEAN_COLUMNS = {
     "local_orig", "local_resp", "AA", "TC", "RD", "RA", "Z",
     "rejected", "resumed", "established", "sni_matches_cert",
+    "proxied", "notice", "dropped",
 }
 
 
@@ -211,4 +242,24 @@ def parse_dns_log(path: str | Path) -> pd.DataFrame:
 
 def parse_ssl_log(path: str | Path) -> pd.DataFrame:
     """Parse a Zeek ssl.log file."""
+    return parse_zeek_log(path)
+
+
+def parse_http_log(path: str | Path) -> pd.DataFrame:
+    """Parse a Zeek http.log file."""
+    return parse_zeek_log(path)
+
+
+def parse_weird_log(path: str | Path) -> pd.DataFrame:
+    """Parse a Zeek weird.log file."""
+    return parse_zeek_log(path)
+
+
+def parse_notice_log(path: str | Path) -> pd.DataFrame:
+    """Parse a Zeek notice.log file."""
+    return parse_zeek_log(path)
+
+
+def parse_dhcp_log(path: str | Path) -> pd.DataFrame:
+    """Parse a Zeek dhcp.log file."""
     return parse_zeek_log(path)
