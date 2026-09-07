@@ -39,6 +39,7 @@ data/zeek/*
 !data/zeek/.gitkeep
 data/live_captures/
 data/live_zeek/
+data/zeek_analysis/
 data/sensor_config.json
 data/sensor_status.json
 
