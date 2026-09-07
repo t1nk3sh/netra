@@ -87,6 +87,9 @@ Alerts follow this structure:
 }
 ```
 
+### Git Push Policy
+Always ask the user whenever code changes are ready to be pushed to git/remote repo, and only execute `git push` once confirmed by the user.
+
 ### Timestamp Handling
 Backend sends epoch floats. Use `format_timestamp()` or `format_time_only()` from `dashboard/utils/formatting.py` — they handle floats, ISO strings, and datetime objects.
 

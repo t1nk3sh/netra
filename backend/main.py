@@ -7,17 +7,34 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
 from alerts.alert_schema import Alert
 from alerts.alert_manager import AlertManager
 from capture.pcap_analyzer import analyze_pcap_file
 
 logger = logging.getLogger(__name__)
+
+LOG_DIR = Path(os.getenv("NETRA_LOG_DIR", "logs"))
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE = LOG_DIR / "service.log"
+
+# Route HTTP/access noise away from the console into the shared service log so
+# the launcher terminal stays clean while logs remain reviewable via /logs.
+if not any(isinstance(h, logging.FileHandler) and getattr(h, "baseFilename", "") == str(LOG_FILE) for h in logger.handlers):
+    try:
+        fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
+        fh.setLevel(logging.INFO)
+        fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+        logger.addHandler(fh)
+    except Exception:
+        pass
 
 app = FastAPI(
     title="NETra - ML-Based Unidirectional Network Threat Detection API",
@@ -97,6 +114,47 @@ alert_manager = AlertManager(
 def get_health() -> Dict[str, str]:
     """Check backend system health."""
     return {"status": "ok", "service": "threat-detection-backend"}
+
+
+def _tail_log(max_chars: int = 50_000) -> str:
+    try:
+        if not LOG_FILE.exists():
+            return "(No log output yet.)"
+        size = LOG_FILE.stat().st_size
+        with open(LOG_FILE, "r", encoding="utf-8", errors="replace") as f:
+            if size > max_chars:
+                f.seek(size - max_chars)
+                f.readline()  # skip partial first line
+            return f.read()
+    except Exception as e:
+        return f"(Could not read log: {e})"
+
+
+@app.get("/logs", response_class=HTMLResponse)
+def get_logs() -> str:
+    """Serve a lightweight self-refreshing page tailing the shared service log."""
+    body = _tail_log()
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NETra Service Logs</title>
+<meta http-equiv="refresh" content="3">
+<style>
+  body {{ background:#0d1117; color:#c9d1d9; font-family:ui-monospace,Menlo,Consolas,monospace; margin:0; padding:16px; }}
+  h1 {{ color:#58a6ff; font-size:16px; border-bottom:1px solid #30363d; padding-bottom:8px; }}
+  pre {{ white-space:pre-wrap; word-break:break-word; font-size:12px; line-height:1.5; }}
+  .bar {{ margin:10px 0; }}
+  a {{ color:#58a6ff; }}
+</style>
+</head>
+<body>
+<h1>NETra Service Logs <span style="color:#8b949e;font-weight:normal">(auto-refresh 3s)</span></h1>
+<div class="bar"><a href="/logs">Reload</a> &middot; <span id="n"></span> lines</div>
+<pre>{body}</pre>
+</body>
+</html>"""
+
 
 
 # In-memory store of raw flows/packets currently being analyzed

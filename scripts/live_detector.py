@@ -37,8 +37,28 @@ from streaming.pipeline import StreamingPipeline
 from zeek.log_parser import parse_conn_log
 from zeek.runner import ZeekRunner, ZeekConfig
 
+# Silence noisy HTTP request logging at the source; request logs are captured
+# in the shared service log by the backend, not spammed to the launcher TTY.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
+LOG_DIR = Path(os.environ.get("NETRA_LOG_DIR", "logs"))
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE = LOG_DIR / "service.log"
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
+
+# Mirror app logs into the shared service log file as well
+if not any(isinstance(h, logging.FileHandler) and getattr(h, "baseFilename", "") == str(LOG_FILE) for h in logger.handlers):
+    try:
+        fh = logging.FileHandler(LOG_FILE, encoding="utf-8")
+        fh.setLevel(logging.INFO)
+        fh.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s"))
+        logger.addHandler(fh)
+    except Exception:
+        pass
 
 CONN_LOG = Path("data/samples/zeek_logs/conn.log")
 SAMPLE_PCAP = Path("data/samples/test_traffic.pcap")
@@ -117,8 +137,22 @@ class LiveDetectorSensor:
             cleaned = []
             for f in flows:
                 fc = f.copy()
-                b = int(fc.get("total_bytes", 0) or (int(fc.get("orig_bytes", 0) or 0) + int(fc.get("resp_bytes", 0) or 0)))
-                p = int(fc.get("total_pkts", 0) or (int(fc.get("orig_pkts", 0) or 0) + int(fc.get("resp_pkts", 0) or 0)))
+
+                def _to_int(v: Any) -> int:
+                    try:
+                        fv = float(v)
+                        if not np.isfinite(fv):
+                            return 0
+                        return int(fv)
+                    except (TypeError, ValueError):
+                        return 0
+
+                b = _to_int(fc.get("total_bytes")) or (
+                    _to_int(fc.get("orig_bytes")) + _to_int(fc.get("resp_bytes"))
+                )
+                p = _to_int(fc.get("total_pkts")) or (
+                    _to_int(fc.get("orig_pkts")) + _to_int(fc.get("resp_pkts"))
+                )
                 self.cumulative_bytes += b
                 self.cumulative_packets += max(1, p)
 
@@ -128,7 +162,10 @@ class LiveDetectorSensor:
                     elif pd.isna(v) or (isinstance(v, float) and not np.isfinite(v)):
                         fc[k] = None
                 if "ts" in fc:
-                    fc["ts"] = float(fc["ts"])
+                    try:
+                        fc["ts"] = float(fc["ts"])
+                    except (TypeError, ValueError):
+                        fc["ts"] = time.time()
                 cleaned.append(fc)
             self.client.post(FLOWS_URL, json=cleaned)
         except Exception as e:
@@ -143,12 +180,31 @@ class LiveDetectorSensor:
             sniffed_pkts = getattr(self.capture, "total_packets_sniffed", 0) if hasattr(self, "capture") and self.capture else self.cumulative_packets
             sniffed_bytes = getattr(self.capture, "total_bytes_sniffed", 0) if hasattr(self, "capture") and self.capture else self.cumulative_bytes
             flow_rate = perf.get("flows_per_second", 0.0)
+            now = time.time()
+
+            # True recent byte-rate (incremental bytes over wall-clock time)
+            prev_bytes = getattr(self, "_prev_bandwidth_bytes", 0)
+            prev_time = getattr(self, "_prev_bandwidth_time", None)
+            if prev_time is None:
+                self._prev_bandwidth_bytes = sniffed_bytes
+                self._prev_bandwidth_time = now
+                bw_bytes_per_sec = 0.0
+            elif now > prev_time:
+                delta_b = sniffed_bytes - prev_bytes
+                delta_t = now - prev_time
+                bw_bytes_per_sec = max(0.0, delta_b) / delta_t
+                self._prev_bandwidth_bytes = sniffed_bytes
+                self._prev_bandwidth_time = now
+            else:
+                bw_bytes_per_sec = 0.0
+
+            bandwidth_kbps = round(bw_bytes_per_sec * 8.0 / 1024.0, 2)
             stats = {
                 "mode": self.active_mode or "replay",
                 "interface": self.active_interface or "any",
                 "active": self.running and self.sub_running,
                 "packets_per_sec": round(flow_rate, 2),
-                "bandwidth_kbps": round((flow_rate * (sniffed_bytes / max(1, sniffed_pkts))) / 1024.0, 2),
+                "bandwidth_kbps": bandwidth_kbps,
                 "latency_ms": round(perf.get("avg_latency_per_flow_ms", 0.0), 3),
                 "total_flows_analyzed": perf.get("processed_flows", 0),
                 "total_packets_sniffed": sniffed_pkts,

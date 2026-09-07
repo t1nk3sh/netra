@@ -47,6 +47,8 @@ class DashboardState:
         self.alerts: List[Dict[str, Any]] = []
         self.threat_ips: List[Dict[str, Any]] = []
         self.flows: List[Dict[str, Any]] = []
+        self.flows_history: List[Dict[str, Any]] = []
+        self.seen_flow_keys: set = set()
         self.pipeline_stats: Dict[str, Any] = {}
         self.last_updated = datetime.now().strftime("%H:%M:%S")
         self.sensor_mode = "replay"
@@ -1396,19 +1398,44 @@ def build_traffic_view(elements: Dict[str, Any]):
             ui.label("Analyzed Ingress Flow Streams").classes("text-sm md:text-base font-bold panel-title")
             elements["traffic_table_count"] = ui.label("0 Flows Ingested").classes("text-xs font-semibold text-slate-400")
 
+        with ui.row().classes("w-full items-center gap-3 flex-wrap"):
+            elements["traffic_filter_state"] = ui.select(
+                options=["All States"] + list(STATE_PALETTE.keys()),
+                value="All States",
+                label="Connection State",
+            ).props("outlined dense").classes("w-48")
+            elements["traffic_filter_proto"] = ui.select(
+                options=["All Protocols"] + [p for p in PROTO_PALETTE if p != "OTHER"],
+                value="All Protocols",
+                label="Protocol",
+            ).props("outlined dense").classes("w-40")
+            elements["traffic_search"] = ui.input(
+                placeholder="Search IP / port / state...",
+            ).props("outlined dense clearable").classes("flex-1 min-w-56")
+
+            def _apply_flow_filters():
+                update_traffic_in_place(elements)
+
+            elements["traffic_filter_state"].on_value_change(_apply_flow_filters)
+            elements["traffic_filter_proto"].on_value_change(_apply_flow_filters)
+            elements["traffic_search"].on_value_change(_apply_flow_filters)
+
         cols = [
-            {"name": "time", "label": "Time", "field": "time", "align": "left"},
-            {"name": "proto", "label": "Protocol", "field": "proto", "align": "left"},
-            {"name": "source", "label": "Source", "field": "source", "align": "left"},
-            {"name": "destination", "label": "Destination", "field": "destination", "align": "left"},
-            {"name": "state", "label": "State", "field": "state", "align": "left"},
+            {"name": "time", "label": "Time", "field": "time", "align": "left", "sortable": True},
+            {"name": "proto", "label": "Protocol", "field": "proto", "align": "left", "sortable": True},
+            {"name": "source", "label": "Source", "field": "source", "align": "left", "sortable": True},
+            {"name": "destination", "label": "Destination", "field": "destination", "align": "left", "sortable": True},
+            {"name": "state", "label": "State", "field": "state", "align": "left", "sortable": True},
             {"name": "packets", "label": "Packets (Tx/Rx)", "field": "packets", "align": "left"},
-            {"name": "bytes", "label": "Bytes", "field": "bytes", "align": "left"},
-            {"name": "duration", "label": "Duration", "field": "duration", "align": "left"},
+            {"name": "bytes", "label": "Bytes", "field": "bytes", "align": "right"},
+            {"name": "duration", "label": "Duration", "field": "duration", "align": "right"},
         ]
-        elements["traffic_flows_table"] = ui.table(columns=cols, rows=[], row_key="time").classes(
-            "w-full shadow-none border border-slate-100 rounded-lg"
-        )
+        elements["traffic_flows_table"] = ui.table(
+            columns=cols,
+            rows=[],
+            row_key="time",
+            pagination={"rowsPerPage": 10, "page": 1},
+        ).classes("w-full shadow-none border border-slate-100 rounded-lg").props("flat bordered dense")
 
 
 def update_traffic_in_place(elements: Dict[str, Any]):
@@ -1444,8 +1471,16 @@ def update_traffic_in_place(elements: Dict[str, Any]):
         size_str = f"{cum_bytes / (1024.0 * 1024.0 * 1024.0):.2f} GB"
 
     rate_pps = float(state.pipeline_stats.get("packets_per_sec", 0.0) or 0.0)
+    bw_kbps = float(state.pipeline_stats.get("bandwidth_kbps", 0.0) or 0.0)
     if lbl_throughput:
-        if rate_pps > 0:
+        if bw_kbps > 0:
+            if bw_kbps >= 1024:
+                bw_str = f"{bw_kbps / 1024.0:.2f} Mbps"
+            else:
+                bw_str = f"{bw_kbps:.0f} kbps"
+            rate_part = f" • {rate_pps:.0f} pkts/s" if rate_pps > 0 else ""
+            lbl_throughput.text = f"{size_str} • {bw_str}{rate_part}"
+        elif rate_pps > 0:
             lbl_throughput.text = f"{size_str} ({cum_pkts:,} Pkts • {rate_pps:.1f} pkts/s)"
         else:
             lbl_throughput.text = f"{size_str} ({cum_pkts:,} Pkts)"
@@ -1582,23 +1617,108 @@ def update_traffic_in_place(elements: Dict[str, Any]):
             except Exception:
                 pass
 
-        # 5. Update Flows Table
+        # 5. Update Flows Table (append-only history, never replaces browsed rows)
         if table:
-            rows = []
+            # Merge new flows into append-only history (dedup by uid or key tuple)
+            max_history = 500
             for f in state.flows:
+                flow_key = f.get("uid") or (
+                    str(f.get("src_ip", "")), str(f.get("src_port", "")),
+                    str(f.get("dst_ip", "")), str(f.get("dst_port", "")),
+                    str(f.get("timestamp") or f.get("ts", "")),
+                )
+                if flow_key not in state.seen_flow_keys:
+                    state.seen_flow_keys.add(flow_key)
+                    state.flows_history.append(f)
+            if len(state.flows_history) > max_history:
+                overflow = state.flows_history[-max_history:]
+                state.flows_history.clear()
+                state.flows_history.extend(overflow)
+                state.seen_flow_keys = {
+                    f.get("uid") or (
+                        str(f.get("src_ip", "")), str(f.get("src_port", "")),
+                        str(f.get("dst_ip", "")), str(f.get("dst_port", "")),
+                        str(f.get("timestamp") or f.get("ts", "")),
+                    ) for f in state.flows_history
+                }
+
+            state_filter = elements.get("traffic_filter_state")
+            proto_filter = elements.get("traffic_filter_proto")
+            search_box = elements.get("traffic_search")
+
+            # Capture the user's current selection FIRST so dynamic option
+            # refresh on the background timer never silently drops it.
+            cur_state = getattr(state_filter, "value", None) or "All States"
+            cur_proto = getattr(proto_filter, "value", None) or "All Protocols"
+
+            known_states = list(STATE_PALETTE.keys())
+            observed_states = list(dict.fromkeys(
+                str(f.get("conn_state", f.get("service", "-")) or "-") for f in state.flows_history
+            ))
+            state_opts = ["All States"] + known_states + [s for s in [cur_state] + observed_states if s not in known_states and s != "All States"]
+            state_opts = list(dict.fromkeys(state_opts))
+            try:
+                state_filter.options = state_opts
+            except Exception:
+                pass
+
+            observed_protos = list(dict.fromkeys(
+                str(f.get("proto", "TCP")).upper().strip() for f in state.flows_history
+            ))
+            proto_opts = ["All Protocols"] + [cur_proto if cur_proto != "All Protocols" else ""] + [p for p in PROTO_PALETTE if p != "OTHER"] + [p for p in observed_protos if p not in PROTO_PALETTE and p != "All Protocols"]
+            proto_opts = [p for p in dict.fromkeys(proto_opts) if p]
+            try:
+                proto_filter.options = proto_opts
+            except Exception:
+                pass
+
+            # Apply the user's actual selection as the active filter
+            sel_state = cur_state
+            sel_proto = cur_proto
+            query = str(getattr(search_box, "value", "") or "").strip().lower()
+
+            rows = []
+            for f in state.flows_history:
+                st = str(f.get("conn_state", f.get("service", "-")) or "-")
+                pr = str(f.get("proto", "TCP")).upper().strip()
+                src_raw = f"{f.get('src_ip', '-')}:{f.get('src_port', '')}"
+                dst_raw = f"{f.get('dst_ip', '-')}:{f.get('dst_port', '')}"
+                if sel_state != "All States" and st != sel_state:
+                    continue
+                if sel_proto != "All Protocols" and pr != sel_proto:
+                    continue
+                if query and query not in f"{src_raw} {dst_raw} {st} {pr}".lower():
+                    continue
+                raw_ts = f.get("timestamp") or f.get("ts", "")
+                try:
+                    sort_ts = float(raw_ts)
+                except (TypeError, ValueError):
+                    sort_ts = 0.0
+                try:
+                    _dt = datetime.fromtimestamp(sort_ts)
+                    time_str = _dt.strftime("%H:%M:%S.") + f"{_dt.microsecond // 1000:03d}"
+                except Exception:
+                    time_str = format_time_only(raw_ts)
                 rows.append({
-                    "time": format_time_only(f.get("timestamp") or f.get("ts", "")),
-                    "proto": str(f.get("proto", "TCP")).upper(),
-                    "source": f"{f.get('src_ip', '-')}:{f.get('src_port', '')}",
-                    "destination": f"{f.get('dst_ip', '-')}:{f.get('dst_port', '')}",
-                    "state": f.get("conn_state", f.get("service", "-")),
+                    "ts_sort": sort_ts,
+                    "time": time_str,
+                    "proto": pr,
+                    "source": src_raw,
+                    "destination": dst_raw,
+                    "state": st,
                     "packets": f"{int(f.get('orig_pkts', 0) or 0)} / {int(f.get('resp_pkts', 0) or 0)}",
                     "bytes": f"{int(f.get('total_bytes', 0) or 0):,}",
                     "duration": f"{float(f.get('duration', 0.0) or 0.0):.2f}s" if f.get("duration") else "< 0.01s",
                 })
+            # Present rows newest-first by actual ingest timestamp
+            rows.sort(key=lambda r: r["ts_sort"], reverse=True)
+            for r in rows:
+                r.pop("ts_sort", None)
             table.rows = rows
             if table_count:
-                table_count.text = f"{len(rows)} Flows Ingested"
+                total = len(state.flows_history)
+                filtered = sel_state != "All States" or sel_proto != "All Protocols" or bool(query)
+                table_count.text = f"{len(rows)} / {total} Flows" if filtered else f"{total} Flows Ingested"
 
     # Trigger chart resize so charts render with true pixel dimensions
     for chart_key in ["traffic_activity_chart", "traffic_state_chart", "traffic_ports_chart", "traffic_proto_chart"]:

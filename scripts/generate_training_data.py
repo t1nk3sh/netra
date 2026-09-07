@@ -10,17 +10,56 @@ OUTPUT_PATH = "data/samples/labeled_flows.csv"
 
 
 def generate(num_benign: int = 150, num_malicious: int = 50) -> str:
-    """Generate and save synthetic flow feature dataset.
+    """Generate and save labeled flow feature dataset.
 
-    Args:
-        num_benign: Number of benign samples.
-        num_malicious: Number of malicious samples.
-
-    Returns:
-        Path to the saved CSV.
+    Uses real CIC-IDS2017 flow distributions if cic_combined.parquet is present,
+    or falls back to synthetic generation.
     """
     np.random.seed(42)
+    cic_path = Path("data/samples/cic_combined.parquet")
+    
+    if cic_path.exists():
+        try:
+            df_cic = pd.read_parquet(cic_path)
+            b_pool = df_cic[df_cic["label"] == 0]
+            a_pool = df_cic[df_cic["label"] == 1]
+            
+            n_b = min(num_benign, len(b_pool))
+            n_a = min(num_malicious, len(a_pool))
+            
+            b_sample = b_pool.sample(n=n_b, random_state=42).copy()
+            a_sample = a_pool.sample(n=n_a, random_state=42).copy()
+            
+            base_ts = 1700000000.0
+            b_sample["src_ip"] = [f"192.168.1.{np.random.randint(10, 100)}" for _ in range(len(b_sample))]
+            b_sample["dst_ip"] = [f"10.0.0.{np.random.randint(1, 10)}" for _ in range(len(b_sample))]
+            b_sample["src_port"] = [int(np.random.randint(1024, 65535)) for _ in range(len(b_sample))]
+            b_sample["dst_port"] = [int(np.random.choice([80, 443, 53, 8080])) for _ in range(len(b_sample))]
+            b_sample["proto"] = ["tcp" if r["is_tcp"] else "udp" for _, r in b_sample.iterrows()]
+            b_sample["conn_state"] = "SF"
+            b_sample["uid"] = [f"benign_{i}" for i in range(len(b_sample))]
 
+            attack_ips = ["172.16.0.5", "172.16.0.10", "172.16.0.15", "192.168.10.50", "192.168.10.99"]
+            a_sample["src_ip"] = [np.random.choice(attack_ips) for _ in range(len(a_sample))]
+            a_sample["dst_ip"] = "192.168.1.100"
+            a_sample["src_port"] = [int(np.random.randint(1024, 65535)) for _ in range(len(a_sample))]
+            a_sample["dst_port"] = [int(np.random.choice([80, 443, 22, 445, 8080])) for _ in range(len(a_sample))]
+            a_sample["proto"] = ["tcp" if r["is_tcp"] else "udp" for _, r in a_sample.iterrows()]
+            a_sample["conn_state"] = "S0"
+            a_sample["uid"] = [f"malicious_{i}" for i in range(len(a_sample))]
+
+            combined = pd.concat([b_sample, a_sample], ignore_index=True)
+            combined = combined.sample(frac=1.0, random_state=42).reset_index(drop=True)
+            combined["ts"] = [base_ts + i * 2.0 for i in range(len(combined))]
+            
+            p_out = Path(OUTPUT_PATH)
+            p_out.parent.mkdir(parents=True, exist_ok=True)
+            combined.to_csv(p_out, index=False)
+            return str(p_out)
+        except Exception:
+            pass
+
+    # Fallback synthetic generation
     # Core columns
     all_cols = ["ts", "uid", "src_ip", "dst_ip", "src_port", "dst_port", "proto", "conn_state", "label"] + FEATURE_COLUMNS
     all_cols = list(dict.fromkeys(all_cols)) # Deduplicate
