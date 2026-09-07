@@ -60,6 +60,7 @@ class LiveDetectorSensor:
         self.current_thread: threading.Thread | None = None
         self.active_mode: str | None = None
         self.active_interface: str | None = None
+        self.active_rotation: int | None = None
         self.active_model_path: str | None = str(DEFAULT_MODEL_PATH)
         self.sub_running = False
 
@@ -245,8 +246,6 @@ class LiveDetectorSensor:
         )
         self.capture = LiveCapture(config=config, on_pcap_ready=self._on_pcap_ready)
         self.capture.start()
-        self.capture = LiveCapture(config=config, on_pcap_ready=self._on_pcap_ready)
-        self.capture.start()
 
     # ── Replay mode (fallback/demo) ──────────────────────────────────
 
@@ -327,7 +326,7 @@ class LiveDetectorSensor:
         default_config = {
             "mode": "replay",
             "interface": "any",
-            "rotation": 30,
+            "rotation": 5,
             "model_path": str(DEFAULT_MODEL_PATH),
         }
         
@@ -343,19 +342,20 @@ class LiveDetectorSensor:
             
             target_mode = config.get("mode", "replay")
             target_interface = config.get("interface", "any")
-            target_rotation = config.get("rotation", 30)
+            target_rotation = int(config.get("rotation", 5))
             target_model_path = config.get("model_path", str(DEFAULT_MODEL_PATH))
 
             # Trigger shift if settings differ from current running thread
             if (self.active_mode != target_mode or 
                 self.active_interface != target_interface or 
+                self.active_rotation != target_rotation or
                 self.active_model_path != target_model_path or
                 self.current_thread is None or 
                 not self.current_thread.is_alive()):
                 
                 logger.info(
-                    "Configuration shift: Switching to mode=%s, iface=%s, model=%s", 
-                    target_mode, target_interface, target_model_path
+                    "Configuration shift: Switching to mode=%s, iface=%s, rotation=%ds, model=%s", 
+                    target_mode, target_interface, target_rotation, target_model_path
                 )
                 
                 # Stop existing thread
@@ -365,12 +365,14 @@ class LiveDetectorSensor:
                 
                 self.active_mode = target_mode
                 self.active_interface = target_interface
+                self.active_rotation = target_rotation
                 self.active_model_path = target_model_path
                 
                 # Write dynamic sensor status database
                 status_info = {
                     "mode": target_mode,
                     "interface": target_interface,
+                    "rotation": target_rotation,
                     "model_path": target_model_path,
                     "active": True,
                     "timestamp": time.time()

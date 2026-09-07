@@ -8,6 +8,7 @@ set -e
 # Parse arguments first before starting any services
 LIVE_MODE=""
 INTERFACE="any"
+ROTATION="5"
 
 while [[ "$#" -gt 0 ]]; do
     case "$1" in
@@ -27,15 +28,28 @@ while [[ "$#" -gt 0 ]]; do
             INTERFACE="${1#*=}"
             shift
             ;;
+        --rotation|-r)
+            ROTATION="$2"
+            shift 2
+            ;;
+        --rotation=*)
+            ROTATION="${1#*=}"
+            shift
+            ;;
+        -r=*)
+            ROTATION="${1#*=}"
+            shift
+            ;;
         -h|--help)
             echo "NETra ML Network Threat Detection Ingest Agent Launcher."
             echo ""
             echo "Usage: ./start.sh [options]"
             echo ""
             echo "Options:"
-            echo "  --live            Enable live capture mode"
-            echo "  -i, --interface   Network interface to sniff (e.g. eth0, wlo1) (default: any)"
-            echo "  -h, --help        Show help options"
+            echo "  --live               Enable live capture mode"
+            echo "  -i, --interface      Network interface to sniff (e.g. eth0, wlo1) (default: any)"
+            echo "  -r, --rotation       PCAP rotation interval in seconds (default: 5)"
+            echo "  -h, --help           Show help options"
             exit 0
             ;;
         *)
@@ -110,11 +124,11 @@ FRONTEND_PID=$!
 
 # 4. Start Threat Detection Sensor
 if [ -n "$LIVE_MODE" ]; then
-    echo "Starting LIVE Capture Sensor on interface: $INTERFACE..."
-    .venv/bin/python scripts/live_detector.py --live --interface "$INTERFACE" &
+    echo "Starting LIVE Capture Sensor on interface: $INTERFACE (rotation: ${ROTATION}s)..."
+    .venv/bin/python scripts/live_detector.py --live --interface "$INTERFACE" --rotation "$ROTATION" &
 else
-    echo "Starting Sensor (dynamic UI controllable mode)..."
-    .venv/bin/python scripts/live_detector.py &
+    echo "Starting Sensor (dynamic UI controllable mode, rotation: ${ROTATION}s)..."
+    .venv/bin/python scripts/live_detector.py --rotation "$ROTATION" &
 fi
 SENSOR_PID=$!
 
