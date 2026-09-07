@@ -31,7 +31,7 @@ def generate(num_benign: int = 150, num_malicious: int = 50) -> str:
     # 1. Benign records
     for i in range(num_benign):
         rec = {
-            "ts": base_ts + i * 5.0,
+            "ts": base_ts + i * 2.0,
             "uid": f"benign_{i}",
             "src_ip": f"10.0.0.{np.random.randint(10, 200)}",
             "dst_ip": "192.168.1.100",
@@ -95,7 +95,7 @@ def generate(num_benign: int = 150, num_malicious: int = 50) -> str:
     # 2. Malicious records (DDoS SYN flood)
     for i in range(num_malicious):
         rec = {
-            "ts": base_ts + num_benign * 5.0 + i * 0.1,
+            "ts": base_ts + (i * 6.0) + 1.0,
             "uid": f"malicious_{i}",
             "src_ip": f"192.168.10.{np.random.randint(2, 254)}",
             "dst_ip": "10.0.0.1",

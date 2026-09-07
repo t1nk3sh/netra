@@ -161,20 +161,29 @@ class ModelTrainer:
             preds = self.model.predict(X_test)
         end_time = time.perf_counter()
 
-        inference_latency_ms = ((end_time - start_time) / len(test_df)) * 1000.0
+        inference_latency_ms = ((end_time - start_time) / max(1, len(test_df))) * 1000.0
 
-        cm = confusion_matrix(y_test, preds)
-        
-        # Calculate rates
-        tn, fp, fn, tp = cm.ravel() if cm.size == 4 else (0, 0, 0, 0)
+        # Standardize labels and calculate 2x2 confusion matrix with explicit labels=[0, 1]
+        y_test_bin = np.array([
+            0 if (isinstance(v, str) and str(v).strip().lower() == "benign") or v == 0 else 1
+            for v in y_test
+        ], dtype=int)
+        preds_bin = np.array([
+            0 if (isinstance(v, str) and str(v).strip().lower() == "benign") or v == 0 else 1
+            for v in preds
+        ], dtype=int)
+
+        cm = confusion_matrix(y_test_bin, preds_bin, labels=[0, 1])
+        tn, fp, fn, tp = cm.ravel()
+
         precision, recall, f1, _ = precision_recall_fscore_support(
-            y_test, preds, average="binary", zero_division=0
+            y_test_bin, preds_bin, average="binary", zero_division=0
         )
 
         fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0
         fnr = fn / (fn + tp) if (fn + tp) > 0 else 0.0
 
-        report = classification_report(y_test, preds, zero_division=0)
+        report = classification_report(y_test_bin, preds_bin, zero_division=0)
 
         return EvaluationMetrics(
             precision=float(precision),
