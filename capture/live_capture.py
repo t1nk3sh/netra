@@ -55,6 +55,7 @@ class LiveCapture:
         self._packets: list = []
         self._rotation_count = 0
         self.total_packets_sniffed = 0
+        self.total_bytes_sniffed = 0
         self.last_error: str | None = None
         self._lock = threading.Lock()
 
@@ -91,6 +92,7 @@ class LiveCapture:
         with self._lock:
             self._packets.append(pkt)
             self.total_packets_sniffed += 1
+            self.total_bytes_sniffed += len(pkt)
             if len(self._packets) >= self._config.rotation_packets:
                 should_flush = True
 

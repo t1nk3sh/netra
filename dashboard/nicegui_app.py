@@ -1426,12 +1426,31 @@ def update_traffic_in_place(elements: Dict[str, Any]):
     if lbl_flows:
         lbl_flows.text = f"{len(state.flows)} Active Flows"
 
+    # Ingress Volume & Packet Dynamic Scaling
+    cum_bytes = int(state.pipeline_stats.get("total_bytes_sniffed", 0) or 0)
+    cum_pkts = int(state.pipeline_stats.get("total_packets_sniffed", 0) or 0)
+    if not cum_bytes and state.flows:
+        cum_bytes = sum(int(f.get("total_bytes", 0) or 0) for f in state.flows)
+    if not cum_pkts and state.flows:
+        cum_pkts = sum(int(f.get("total_pkts", 0) or (int(f.get("orig_pkts", 0) or 0) + int(f.get("resp_pkts", 0) or 0))) for f in state.flows)
+
+    if cum_bytes < 1024:
+        size_str = f"{cum_bytes} B"
+    elif cum_bytes < 1024 * 1024:
+        size_str = f"{cum_bytes / 1024.0:.1f} KB"
+    elif cum_bytes < 1024 * 1024 * 1024:
+        size_str = f"{cum_bytes / (1024.0 * 1024.0):.2f} MB"
+    else:
+        size_str = f"{cum_bytes / (1024.0 * 1024.0 * 1024.0):.2f} GB"
+
+    rate_pps = float(state.pipeline_stats.get("packets_per_sec", 0.0) or 0.0)
+    if lbl_throughput:
+        if rate_pps > 0:
+            lbl_throughput.text = f"{size_str} ({cum_pkts:,} Pkts • {rate_pps:.1f} pkts/s)"
+        else:
+            lbl_throughput.text = f"{size_str} ({cum_pkts:,} Pkts)"
+
     if state.flows:
-        total_bytes = sum(int(f.get("total_bytes", 0) or 0) for f in state.flows)
-        total_pkts = sum(int(f.get("total_pkts", 0) or (int(f.get("orig_pkts", 0) or 0) + int(f.get("resp_pkts", 0) or 0))) for f in state.flows)
-        size_str = f"{round(total_bytes/1024, 1)} KB" if total_bytes < 1024*1024 else f"{round(total_bytes/(1024*1024), 2)} MB"
-        if lbl_throughput:
-            lbl_throughput.text = f"{size_str} ({total_pkts:,} Pkts)"
 
         # 1. Update Live Timeline Throughput Chart
         activity_chart = elements.get("traffic_activity_chart")

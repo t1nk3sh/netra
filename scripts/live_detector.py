@@ -63,6 +63,8 @@ class LiveDetectorSensor:
         self.active_rotation: int | None = None
         self.active_model_path: str | None = str(DEFAULT_MODEL_PATH)
         self.sub_running = False
+        self.cumulative_bytes: int = 0
+        self.cumulative_packets: int = 0
 
     def stop(self) -> None:
         self.running = False
@@ -115,6 +117,11 @@ class LiveDetectorSensor:
             cleaned = []
             for f in flows:
                 fc = f.copy()
+                b = int(fc.get("total_bytes", 0) or (int(fc.get("orig_bytes", 0) or 0) + int(fc.get("resp_bytes", 0) or 0)))
+                p = int(fc.get("total_pkts", 0) or (int(fc.get("orig_pkts", 0) or 0) + int(fc.get("resp_pkts", 0) or 0)))
+                self.cumulative_bytes += b
+                self.cumulative_packets += max(1, p)
+
                 for k, v in fc.items():
                     if isinstance(v, (datetime, pd.Timestamp)):
                         fc[k] = v.isoformat()
@@ -133,15 +140,19 @@ class LiveDetectorSensor:
             return
         try:
             perf = self.pipeline.get_performance_stats()
-            sniffed = getattr(self.capture, "total_packets_sniffed", 0) if hasattr(self, "capture") and self.capture else 0
+            sniffed_pkts = getattr(self.capture, "total_packets_sniffed", 0) if hasattr(self, "capture") and self.capture else self.cumulative_packets
+            sniffed_bytes = getattr(self.capture, "total_bytes_sniffed", 0) if hasattr(self, "capture") and self.capture else self.cumulative_bytes
+            flow_rate = perf.get("flows_per_second", 0.0)
             stats = {
                 "mode": self.active_mode or "replay",
                 "interface": self.active_interface or "any",
                 "active": self.running and self.sub_running,
-                "packets_per_sec": round(perf.get("flows_per_second", 0.0), 2),
+                "packets_per_sec": round(flow_rate, 2),
+                "bandwidth_kbps": round((flow_rate * (sniffed_bytes / max(1, sniffed_pkts))) / 1024.0, 2),
                 "latency_ms": round(perf.get("avg_latency_per_flow_ms", 0.0), 3),
                 "total_flows_analyzed": perf.get("processed_flows", 0),
-                "total_packets_sniffed": sniffed,
+                "total_packets_sniffed": sniffed_pkts,
+                "total_bytes_sniffed": sniffed_bytes,
             }
             self.client.post("http://localhost:8000/pipeline_stats", json=stats)
         except Exception:
