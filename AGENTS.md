@@ -87,6 +87,9 @@ Alerts follow this structure:
 }
 ```
 
+### Git Commit Policy
+Commit code changes as part of completing the work, not as an extra step. After finishing a change (and passing tests/lint), create a commit with a concise message following the existing repo style. Do not push unless the user asks; pushing is governed by the Git Push Policy below.
+
 ### Git Push Policy
 Always ask the user whenever code changes are ready to be pushed to git/remote repo, and only execute `git push` once confirmed by the user.
 
