@@ -6,7 +6,9 @@ import pandas as pd
 
 from models.preprocessing import FEATURE_COLUMNS
 
-OUTPUT_PATH = "data/samples/labeled_flows.csv"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SAMPLES_DIR = PROJECT_ROOT / "data" / "samples"
+OUTPUT_PATH = str(SAMPLES_DIR / "labeled_flows.csv")
 
 
 def generate(num_benign: int = 150, num_malicious: int = 50) -> str:
@@ -16,7 +18,7 @@ def generate(num_benign: int = 150, num_malicious: int = 50) -> str:
     or falls back to synthetic generation.
     """
     np.random.seed(42)
-    cic_path = Path("data/samples/cic_combined.parquet")
+    cic_path = SAMPLES_DIR / "cic_combined.parquet"
     
     if cic_path.exists():
         try:

@@ -1,7 +1,6 @@
 """Unit tests for capture/replay.py"""
 
 import time
-from pathlib import Path
 
 import pytest
 
@@ -12,8 +11,8 @@ from capture.replay import (
     ReplaySpeed,
     ReplayStats,
 )
+from tests.paths import SAMPLE_PCAP
 
-SAMPLE_PCAP = Path("data/samples/test_traffic.pcap")
 EXPECTED_PACKET_COUNT = 10
 
 

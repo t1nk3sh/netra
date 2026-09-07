@@ -12,6 +12,9 @@ from pathlib import Path
 
 import pandas as pd
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+SAMPLES_DIR = PROJECT_ROOT / "data" / "samples"
+
 
 # ── CIC-IDS2017 column name -> our feature column name ──────────────
 CIC_TO_FEATURE = {
@@ -133,11 +136,11 @@ def add_zero_fill(df: pd.DataFrame) -> pd.DataFrame:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Combine CIC-IDS2017 daily files")
     parser.add_argument(
-        "--data", "-d", default="data/samples",
+        "--data", "-d", default=str(SAMPLES_DIR),
         help="Folder containing the daily files (CSV or Parquet, default: data/samples)",
     )
     parser.add_argument(
-        "--output", "-o", default="data/samples/cic_combined.parquet",
+        "--output", "-o", default=str(SAMPLES_DIR / "cic_combined.parquet"),
         help="Output combined file path (.parquet or .csv)",
     )
     parser.add_argument(

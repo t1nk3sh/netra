@@ -37,13 +37,16 @@ from streaming.pipeline import StreamingPipeline
 from zeek.log_parser import parse_conn_log
 from zeek.runner import ZeekRunner, ZeekConfig
 
+# Resolve every path relative to the project root.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
 # Silence noisy HTTP request logging at the source; request logs are captured
 # in the shared service log by the backend, not spammed to the launcher TTY.
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
-LOG_DIR = Path(os.environ.get("NETRA_LOG_DIR", "logs"))
+LOG_DIR = Path(os.environ.get("NETRA_LOG_DIR", str(PROJECT_ROOT / "logs")))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / "service.log"
 
@@ -60,10 +63,12 @@ if not any(isinstance(h, logging.FileHandler) and getattr(h, "baseFilename", "")
     except Exception:
         pass
 
-CONN_LOG = Path("data/samples/zeek_logs/conn.log")
-SAMPLE_PCAP = Path("data/samples/test_traffic.pcap")
-LIVE_CAPTURE_DIR = Path("data/live_captures")
-LIVE_ZEEK_DIR = Path("data/live_zeek")
+DATA_DIR = PROJECT_ROOT / "data"
+SAMPLES_DIR = DATA_DIR / "samples"
+CONN_LOG = SAMPLES_DIR / "zeek_logs" / "conn.log"
+SAMPLE_PCAP = SAMPLES_DIR / "test_traffic.pcap"
+LIVE_CAPTURE_DIR = DATA_DIR / "live_captures"
+LIVE_ZEEK_DIR = DATA_DIR / "live_zeek"
 API_URL = "http://localhost:8000/alerts"
 FLOWS_URL = "http://localhost:8000/flows"
 SPEED_MULTIPLIER = 1.0
@@ -216,7 +221,7 @@ class LiveDetectorSensor:
 
     def _update_zeek_run_status(self, success: bool, count: int, error: str = "") -> None:
         """Update last Zeek execution stats in the sensor status tracker file."""
-        p_status = Path("data/sensor_status.json")
+        p_status = DATA_DIR / "sensor_status.json"
         status = {}
         if p_status.exists():
             try:
@@ -322,7 +327,7 @@ class LiveDetectorSensor:
         self._ensure_model()
 
         records = []
-        labeled_path = Path("data/samples/labeled_flows.csv")
+        labeled_path = SAMPLES_DIR / "labeled_flows.csv"
         if labeled_path.exists():
             try:
                 df_labeled = pd.read_csv(labeled_path)
@@ -387,7 +392,7 @@ class LiveDetectorSensor:
 
     def monitor_config(self) -> None:
         """Dynamic filesystem-based control loop to allow live switching from the UI."""
-        config_path = Path("data/sensor_config.json")
+        config_path = DATA_DIR / "sensor_config.json"
         default_config = {
             "mode": "replay",
             "interface": "any",
@@ -443,7 +448,7 @@ class LiveDetectorSensor:
                     "timestamp": time.time()
                 }
                 try:
-                    p_status = Path("data/sensor_status.json")
+                    p_status = DATA_DIR / "sensor_status.json"
                     with open(p_status, "w") as f:
                         json.dump(status_info, f)
                 except Exception:
@@ -466,7 +471,7 @@ class LiveDetectorSensor:
             # Periodically sync capture error state if any
             if hasattr(self, "capture") and getattr(self.capture, "last_error", None):
                 try:
-                    p_status = Path("data/sensor_status.json")
+                    p_status = DATA_DIR / "sensor_status.json"
                     if p_status.exists():
                         with open(p_status, "r") as f:
                             cur_status = json.load(f)
@@ -501,7 +506,7 @@ def main():
     def handle_exit(signum, frame):
         try:
             sensor.stop()
-            p_status = Path("data/sensor_status.json")
+            p_status = DATA_DIR / "sensor_status.json"
             if p_status.exists():
                 p_status.unlink()
         except Exception:
@@ -512,7 +517,7 @@ def main():
     signal.signal(signal.SIGTERM, handle_exit)
 
     # Initialize sensor config based on command line arguments, allowing restart compatibility
-    config_path = Path("data/sensor_config.json")
+    config_path = DATA_DIR / "sensor_config.json"
     try:
         config_path.parent.mkdir(parents=True, exist_ok=True)
         init_config = {

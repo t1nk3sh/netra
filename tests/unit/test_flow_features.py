@@ -1,7 +1,5 @@
 """Unit tests for features/flow_features.py"""
 
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import pytest
@@ -15,8 +13,7 @@ from features.flow_features import (
     _extract_conn_state_features,
 )
 from zeek.log_parser import parse_conn_log
-
-CONN_LOG = Path("data/samples/zeek_logs/conn.log")
+from tests.paths import CONN_LOG
 
 
 @pytest.fixture(scope="module")

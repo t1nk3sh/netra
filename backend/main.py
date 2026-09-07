@@ -21,9 +21,14 @@ from capture.pcap_analyzer import analyze_pcap_file
 
 logger = logging.getLogger(__name__)
 
-LOG_DIR = Path(os.getenv("NETRA_LOG_DIR", "logs"))
+# Resolve every path relative to the project root so the project works when
+# cloned anywhere and launched from any working directory.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+LOG_DIR = Path(os.getenv("NETRA_LOG_DIR", str(PROJECT_ROOT / "logs")))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / "service.log"
+SAMPLES_DIR = PROJECT_ROOT / "data" / "samples"
+UPLOADS_DIR = PROJECT_ROOT / "data" / "uploads"
 
 # Route HTTP/access noise away from the console into the shared service log so
 # the launcher terminal stays clean while logs remain reviewable via /logs.
@@ -297,7 +302,7 @@ def list_available_pcaps() -> List[Dict[str, Any]]:
     pcap_files = []
     
     # Check sample pcaps
-    samples_dir = Path("data/samples")
+    samples_dir = SAMPLES_DIR
     if samples_dir.exists():
         for p in sorted(samples_dir.glob("*.pcap")):
             pcap_files.append({
@@ -308,7 +313,7 @@ def list_available_pcaps() -> List[Dict[str, Any]]:
             })
             
     # Check uploads
-    uploads_dir = Path("data/uploads")
+    uploads_dir = UPLOADS_DIR
     if uploads_dir.exists():
         for p in sorted(uploads_dir.glob("*.pcap*")):
             pcap_files.append({
@@ -347,7 +352,7 @@ async def analyze_uploaded_pcap(
                 detail=f"Unsupported file type '{suffix}'. Allowed: {', '.join(sorted(ALLOWED_PCAP_EXTENSIONS))}"
             )
 
-        uploads_dir = Path("data/uploads")
+        uploads_dir = UPLOADS_DIR
         uploads_dir.mkdir(parents=True, exist_ok=True)
         target_path = uploads_dir / safe_filename
 

@@ -18,7 +18,8 @@ from scapy.all import sniff, wrpcap
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_OUTPUT_DIR = Path("data/live_captures")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_OUTPUT_DIR = str(PROJECT_ROOT / "data" / "live_captures")
 DEFAULT_ROTATION_SECONDS = 5
 DEFAULT_ROTATION_PACKETS = 50
 

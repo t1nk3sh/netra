@@ -17,7 +17,7 @@ from models.training import ModelTrainer
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL_PATH = Path("models/artifacts/default_rf.joblib")
+DEFAULT_MODEL_PATH = Path(__file__).resolve().parents[1] / "models" / "artifacts" / "default_rf.joblib"
 
 
 class ThreatPredictor:

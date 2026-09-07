@@ -254,7 +254,7 @@ def analyze_pcap_file(
     zeek_used = False
     
     try:
-        temp_zeek_out = Path("data/zeek_analysis") / f"temp_{int(time.time()*1000)}"
+        temp_zeek_out = Path(__file__).resolve().parents[1] / "data" / "zeek_analysis" / f"temp_{int(time.time()*1000)}"
         temp_zeek_out.mkdir(parents=True, exist_ok=True)
         runner = ZeekRunner(ZeekConfig(output_dir=temp_zeek_out))
         

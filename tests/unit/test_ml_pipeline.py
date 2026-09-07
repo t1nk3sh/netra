@@ -9,8 +9,9 @@ import pytest
 
 from models.preprocessing import FlowFeaturePreprocessor, FEATURE_COLUMNS
 from models.training import ModelTrainer, EvaluationMetrics
+from tests.paths import LABELED_FLOWS
 
-DATA_PATH = Path("data/samples/labeled_flows.csv")
+DATA_PATH = LABELED_FLOWS
 
 
 @pytest.fixture(scope="module")

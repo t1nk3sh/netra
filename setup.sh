@@ -5,6 +5,10 @@
 
 set -e
 
+# Resolve project root from this script's own location so setup works from any
+# working directory (e.g. right after cloning).
+cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 echo "=== Starting NETra ML Threat Detection Node Setup ==="
 
 # 1. Verify standard system packages

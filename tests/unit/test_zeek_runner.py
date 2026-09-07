@@ -20,10 +20,9 @@ from zeek.runner import (
     _build_native_command,
     _build_docker_command,
     EXPECTED_LOGS,
+    DEFAULT_ZEEK_OUTPUT_DIR,
 )
-
-SAMPLE_PCAP = Path("data/samples/test_traffic.pcap")
-ZEEK_PCAP = Path("data/samples/zeek_test_traffic.pcap")
+from tests.paths import SAMPLE_PCAP, ZEEK_PCAP
 
 
 @pytest.fixture(scope="module")
@@ -45,7 +44,7 @@ def zeek_pcap_path() -> Path:
 class TestZeekConfig:
     def test_default_config(self):
         cfg = ZeekConfig()
-        assert cfg.output_dir == "data/zeek"
+        assert str(cfg.output_dir) == DEFAULT_ZEEK_OUTPUT_DIR
         assert cfg.backend is None
         assert cfg.docker_image == "zeek/zeek:latest"
         assert cfg.extra_scripts == []

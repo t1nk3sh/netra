@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from alerts.alert_schema import Alert
 from backend.main import app, alert_manager
+from tests.paths import SAMPLE_PCAP
 
 client = TestClient(app)
 
@@ -154,7 +155,7 @@ class TestBackendREST:
         assert isinstance(response.json(), list)
 
     def test_analyze_pcap_by_path(self):
-        sample_path = "data/samples/test_traffic.pcap"
+        sample_path = str(SAMPLE_PCAP)
         response = client.post(f"/analyze_pcap?file_path={sample_path}")
         assert response.status_code == 200
         data = response.json()

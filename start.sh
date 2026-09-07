@@ -5,6 +5,11 @@
 
 set -e
 
+# Resolve project root from this script's own location so it can be launched
+# from any working directory (e.g. right after cloning).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 # ── ASCII Splash ──────────────────────────────────────────────────────
 splash() {
     echo ""
@@ -178,7 +183,12 @@ echo -e "\033[1;36m────────────────────�
 echo -e "\033[1;32m NETra is running\033[0m"
 echo -e "\033[0;32m Dashboard : http://localhost:8501       \033[0m"
 echo -e "\033[0;32m Backend   : http://localhost:8000/logs  \033[0m \033[0;90m(View live service logs in browser)\033[0m"
-echo -e "\033[0;90m Log file  : $LOG_FILE\033[0m"
+
+# Clickable local log file link (OSC 8 hyperlink, works in GNOME/kitty/Alacritty terminals)
+LOG_ABS="$(cd "$(dirname "$LOG_FILE")" && pwd)/$(basename "$LOG_FILE")"
+LOG_URI="file://$(echo "$LOG_ABS" | sed 's/ /%20/g')"
+printf '\033[0;90m Log file  : \033[0m'
+printf '\033]8;;%s\033\\\033[0;94m%s\033[0m\033]8;;\033\\\033[0;90m  (click to open)\033[0m\n' "$LOG_URI" "$LOG_ABS"
 echo -e "\033[1;36m──────────────────────────────────────────────────────────\033[0m"
 echo ""
 echo "Ctrl+C to stop all services."

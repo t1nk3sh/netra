@@ -16,7 +16,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 # Ensure project root is in path
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+DATA_DIR = PROJECT_ROOT / "data"
+SAMPLES_DIR = DATA_DIR / "samples"
+MODELS_DIR = PROJECT_ROOT / "models"
+ARTIFACTS_DIR = MODELS_DIR / "artifacts"
+UPLOADS_DIR = DATA_DIR / "uploads"
 
 from nicegui import ui
 import numpy as np
@@ -94,8 +101,8 @@ def get_mem_usage() -> float:
 
 def get_available_models() -> Dict[str, str]:
     """Scan models/artifacts directory for .joblib models."""
-    artifacts_dir = Path("models/artifacts")
-    models: Dict[str, str] = {}
+    artifacts_dir = ARTIFACTS_DIR
+    models: Dict[str, str] = {} 
     if artifacts_dir.exists():
         for p in sorted(artifacts_dir.glob("*.joblib")):
             if p.name == "default_rf.joblib":
@@ -118,7 +125,7 @@ def get_available_models() -> Dict[str, str]:
 
 def get_available_datasets() -> Dict[str, str]:
     """Scan data/samples for test and prototyping datasets."""
-    samples_dir = Path("data/samples")
+    samples_dir = SAMPLES_DIR
     datasets: Dict[str, str] = {}
     if samples_dir.exists():
         for p in sorted(list(samples_dir.glob("*.parquet")) + list(samples_dir.glob("*.csv"))):
@@ -130,7 +137,7 @@ def get_available_datasets() -> Dict[str, str]:
                 display = f"{p.name}"
             datasets[str(p)] = display
     if not datasets:
-        datasets["data/samples/labeled_flows.csv"] = "Sample Synthetic Flows (labeled_flows.csv)"
+        datasets[str(SAMPLES_DIR / "labeled_flows.csv")] = "Sample Synthetic Flows (labeled_flows.csv)"
     return datasets
 
 
@@ -139,21 +146,21 @@ def get_available_pcaps() -> Dict[str, str]:
     pcaps: Dict[str, str] = {}
     
     # Check data/samples
-    samples_dir = Path("data/samples")
+    samples_dir = SAMPLES_DIR
     if samples_dir.exists():
         for p in sorted(samples_dir.glob("*.pcap")):
             size_kb = round(p.stat().st_size / 1024, 1)
             pcaps[str(p)] = f"Sample: {p.name} ({size_kb} KB)"
             
     # Check data/uploads
-    uploads_dir = Path("data/uploads")
+    uploads_dir = UPLOADS_DIR
     if uploads_dir.exists():
         for p in sorted(uploads_dir.glob("*.pcap*")):
             size_kb = round(p.stat().st_size / 1024, 1)
             pcaps[str(p)] = f"Upload: {p.name} ({size_kb} KB)"
             
     if not pcaps:
-        pcaps["data/samples/test_traffic.pcap"] = "Sample: test_traffic.pcap"
+        pcaps[str(SAMPLES_DIR / "test_traffic.pcap")] = "Sample: test_traffic.pcap"
     return pcaps
 
 
@@ -182,7 +189,7 @@ def run_model_evaluation(model_path_str: str, dataset_path_str: str, elements: D
         is_active = (p_model.name == "default_rf.joblib")
         cfg_model = None
         try:
-            cfg_p = Path("data/sensor_config.json")
+            cfg_p = DATA_DIR / "sensor_config.json"
             if cfg_p.exists():
                 with open(cfg_p, "r") as f:
                     cfg_model = json.load(f).get("model_path")
@@ -256,7 +263,7 @@ def fetch_latest_data() -> None:
     state.last_updated = datetime.now().strftime("%H:%M:%S")
 
     # Read sensor status from JSON if available
-    p_status = Path("data/sensor_status.json")
+    p_status = DATA_DIR / "sensor_status.json"
     if p_status.exists():
         try:
             with open(p_status, "r") as f:
@@ -695,7 +702,7 @@ def main_page():
             except Exception:
                 available_ifaces = ["any", "wlo1", "lo", "docker0", "eth0"]
 
-            config_path = Path("data/sensor_config.json")
+            config_path = DATA_DIR / "sensor_config.json"
             cfg = {"mode": "replay", "interface": "any"}
             if config_path.exists():
                 try:
@@ -1925,7 +1932,7 @@ def build_pcap_analysis_view(elements: Dict[str, Any]):
     available_pcaps = get_available_pcaps()
     available_models = get_available_models()
 
-    default_pcap = list(available_pcaps.keys())[0] if available_pcaps else "data/samples/test_traffic.pcap"
+    default_pcap = list(available_pcaps.keys())[0] if available_pcaps else str(SAMPLES_DIR / "test_traffic.pcap")
     default_model = str(DEFAULT_MODEL_PATH)
     if default_model not in available_models and available_models:
         default_model = list(available_models.keys())[0]
@@ -1943,7 +1950,7 @@ def build_pcap_analysis_view(elements: Dict[str, Any]):
                 ui.label("Upload Custom PCAP").classes("text-[10px] font-bold text-slate-400 tracking-wider")
                 
                 async def handle_upload(e):
-                    upload_dir = Path("data/uploads")
+                    upload_dir = UPLOADS_DIR
                     upload_dir.mkdir(parents=True, exist_ok=True)
                     
                     file_obj = getattr(e, "file", None)
@@ -2410,9 +2417,10 @@ def build_models_view(elements: Dict[str, Any]):
     if default_model_choice not in available_models and available_models:
         default_model_choice = list(available_models.keys())[0]
 
-    default_dataset_choice = list(available_datasets.keys())[0] if available_datasets else "data/samples/labeled_flows.csv"
-    if "data/samples/cic_combined.parquet" in available_datasets:
-        default_dataset_choice = "data/samples/cic_combined.parquet"
+    default_dataset_choice = list(available_datasets.keys())[0] if available_datasets else str(SAMPLES_DIR / "labeled_flows.csv")
+    cic_combined = str(SAMPLES_DIR / "cic_combined.parquet")
+    if cic_combined in available_datasets:
+        default_dataset_choice = cic_combined
 
     elements["current_selected_model"] = default_model_choice
     elements["current_selected_dataset"] = default_dataset_choice
@@ -2449,7 +2457,7 @@ def build_models_view(elements: Dict[str, Any]):
                             shutil.copyfile(p_src, DEFAULT_MODEL_PATH)
                         
                         # Update sensor config
-                        cfg_path = Path("data/sensor_config.json")
+                        cfg_path = DATA_DIR / "sensor_config.json"
                         cur_cfg = {"mode": "replay", "interface": "any", "rotation": 5}
                         if cfg_path.exists():
                             try:

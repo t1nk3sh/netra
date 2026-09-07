@@ -1,7 +1,6 @@
 """Unit tests for zeek/log_parser.py"""
 
 from datetime import datetime, timezone
-from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -18,8 +17,9 @@ from zeek.log_parser import (
     _detect_format,
     _zeek_ts_to_datetime,
 )
+from tests.paths import ZEEK_LOGS_DIR
 
-SAMPLE_DIR = Path("data/samples/zeek_logs")
+SAMPLE_DIR = ZEEK_LOGS_DIR
 CONN_LOG = SAMPLE_DIR / "conn.log"
 DNS_LOG = SAMPLE_DIR / "dns.log"
 SSL_LOG = SAMPLE_DIR / "ssl.log"

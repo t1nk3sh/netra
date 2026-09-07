@@ -1,7 +1,5 @@
 """Unit tests for capture/pcap_reader.py"""
 
-from pathlib import Path
-
 import pytest
 
 from capture.pcap_reader import (
@@ -11,8 +9,8 @@ from capture.pcap_reader import (
     iter_packets,
     read_pcap,
 )
+from tests.paths import SAMPLE_PCAP
 
-SAMPLE_PCAP = Path("data/samples/test_traffic.pcap")
 EXPECTED_PACKET_COUNT = 10
 EXPECTED_FIRST_TS = 1700000000.0
 EXPECTED_LAST_TS = 1700000002.0

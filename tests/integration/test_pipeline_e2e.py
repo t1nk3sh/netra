@@ -1,15 +1,12 @@
 """End-to-end integration test validating the threat monitoring pipeline."""
 
-from pathlib import Path
 import pytest
 import pandas as pd
 
 from zeek.log_parser import parse_conn_log
 from streaming.pipeline import StreamingPipeline
-from inference.predictor import DEFAULT_MODEL_PATH
 from alerts.alert_schema import Alert
-
-CONN_LOG = Path("data/samples/zeek_logs/conn.log")
+from tests.paths import CONN_LOG, DEFAULT_MODEL_PATH
 
 
 @pytest.fixture(scope="module")

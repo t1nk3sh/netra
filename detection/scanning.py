@@ -46,7 +46,7 @@ def load_thresholds(config_path: str | Path | None = None) -> Dict[str, Any]:
         Dict of configurations.
     """
     if config_path is None:
-        config_path = Path("config/thresholds.yaml")
+        config_path = Path(__file__).resolve().parents[1] / "config" / "thresholds.yaml"
 
     p = Path(config_path)
     if not p.exists():

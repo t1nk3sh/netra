@@ -1,18 +1,17 @@
 """Unit tests for the PCAP Analyzer module."""
 
-from pathlib import Path
 import pytest
 
 from capture.pcap_analyzer import analyze_pcap_file, _extract_scapy_flows
+from tests.paths import SAMPLE_PCAP
 
 
 @pytest.fixture
 def sample_pcap_path():
-    p = Path("data/samples/test_traffic.pcap")
-    if not p.exists():
+    if not SAMPLE_PCAP.exists():
         from scripts.generate_test_pcap import generate
-        generate(str(p))
-    return p
+        generate()
+    return SAMPLE_PCAP
 
 
 def test_analyze_pcap_file_success(sample_pcap_path):
@@ -33,7 +32,7 @@ def test_analyze_pcap_file_success(sample_pcap_path):
 
 def test_analyze_pcap_file_not_found():
     with pytest.raises(FileNotFoundError):
-        analyze_pcap_file("data/samples/non_existent_file.pcap")
+        analyze_pcap_file("/nonexistent/path.pcap")
 
 
 def test_analyze_pcap_file_invalid_target(tmp_path):

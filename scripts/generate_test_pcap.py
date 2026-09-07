@@ -1,9 +1,12 @@
 """Generate synthetic PCAPs for testing."""
 
+from pathlib import Path
+
 from scapy.all import IP, TCP, UDP, DNS, DNSQR, DNSRR, Ether, Raw, wrpcap
 
-PCAP_PATH = "data/samples/test_traffic.pcap"
-ZEEK_PCAP_PATH = "data/samples/zeek_test_traffic.pcap"
+SAMPLES_DIR = Path(__file__).resolve().parents[1] / "data" / "samples"
+PCAP_PATH = str(SAMPLES_DIR / "test_traffic.pcap")
+ZEEK_PCAP_PATH = str(SAMPLES_DIR / "zeek_test_traffic.pcap")
 
 
 def generate() -> str:
@@ -37,6 +40,7 @@ def generate() -> str:
     packets.append(pkt)
 
     wrpcap(PCAP_PATH, packets)
+    SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
     return PCAP_PATH
 
 
@@ -110,6 +114,7 @@ def generate_zeek_pcap() -> str:
         pkt.time = base_time + 0.6 + i * 0.05
         packets.append(pkt)
 
+    SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
     wrpcap(ZEEK_PCAP_PATH, packets)
     return ZEEK_PCAP_PATH
 

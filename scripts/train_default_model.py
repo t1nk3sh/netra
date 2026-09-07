@@ -5,15 +5,16 @@ from pathlib import Path
 import pandas as pd
 from models.training import ModelTrainer
 
-DEFAULT_DATA_PATH = "data/samples/labeled_flows.csv"
-DEFAULT_MODEL_PATH = "models/artifacts/default_rf.joblib"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_DATA_PATH = str(PROJECT_ROOT / "data" / "samples" / "labeled_flows.csv")
+DEFAULT_MODEL_PATH = str(PROJECT_ROOT / "models" / "artifacts" / "default_rf.joblib")
 
 
 def train_model(data_path: str, model_type: str, output_path: str) -> None:
     """Train a classifier on the target dataset CSV and save model weights."""
     p_data = Path(data_path)
     if not p_data.exists():
-        if data_path == DEFAULT_DATA_PATH:
+        if str(p_data) == DEFAULT_DATA_PATH:
             print(f"Predefined dataset not found. Generating default training samples...")
             from scripts.generate_training_data import generate
             generate()

@@ -21,6 +21,9 @@ logger = logging.getLogger(__name__)
 EXPECTED_LOGS = ["conn.log", "dns.log", "ssl.log", "http.log", "weird.log", "notice.log", "dhcp.log"]
 DOCKER_IMAGE = "zeek/zeek:latest"
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_ZEEK_OUTPUT_DIR = str(PROJECT_ROOT / "data" / "zeek")
+
 
 class ZeekBackend(Enum):
     NATIVE = "native"
@@ -31,7 +34,7 @@ class ZeekBackend(Enum):
 class ZeekConfig:
     """Configuration for Zeek execution."""
 
-    output_dir: str | Path = "data/zeek"
+    output_dir: str | Path = DEFAULT_ZEEK_OUTPUT_DIR
     backend: ZeekBackend | None = None
     docker_image: str = DOCKER_IMAGE
     extra_scripts: list[str] = field(default_factory=list)

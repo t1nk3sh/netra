@@ -21,8 +21,12 @@ from inference.predictor import DEFAULT_MODEL_PATH
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
 
-ZEEK_PCAP_PATH = Path("data/samples/zeek_test_traffic.pcap")
-FALLBACK_LOGS = Path("data/samples/zeek_logs/conn.log")
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DATA_DIR = PROJECT_ROOT / "data"
+SAMPLES_DIR = DATA_DIR / "samples"
+ZEEK_PCAP_PATH = SAMPLES_DIR / "zeek_test_traffic.pcap"
+FALLBACK_LOGS = SAMPLES_DIR / "zeek_logs" / "conn.log"
+TEMP_ZEEK_DIR = DATA_DIR / "temp_zeek"
 
 
 def main():
@@ -57,7 +61,7 @@ def main():
     runner = ZeekRunner()
     if runner.is_available():
         logger.info("Zeek backend detected (%s). Executing against PCAP...", runner.backend.value)
-        out_dir = Path("data/temp_zeek")
+        out_dir = TEMP_ZEEK_DIR
         runner_cfg = ZeekConfig(output_dir=out_dir)
         zeek_run = ZeekRunner(runner_cfg)
         res = zeek_run.process_pcap(ZEEK_PCAP_PATH)
