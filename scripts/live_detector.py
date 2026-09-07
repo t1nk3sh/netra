@@ -80,14 +80,15 @@ class LiveDetectorSensor:
         m_path = Path(self.active_model_path) if self.active_model_path else DEFAULT_MODEL_PATH
         if not m_path.exists():
             logger.info("Model not found at %s. Training default model first...", m_path)
-            from scripts.train_default_model import train_default
-            train_default()
+            from scripts.train_default_model import train_model
+            train_model(output_path=str(m_path))
 
     def _init_pipeline(self) -> StreamingPipeline:
         m_path = Path(self.active_model_path) if self.active_model_path else DEFAULT_MODEL_PATH
         return StreamingPipeline(
             window_size_sec=5.0,
             model_path=m_path,
+            ml_threshold=0.35,
             alert_callback=self.post_alert,
         )
 
@@ -250,73 +251,70 @@ class LiveDetectorSensor:
     # ── Replay mode (fallback/demo) ──────────────────────────────────
 
     def start_replay(self) -> None:
-        """Replay pre-existing Zeek logs for demo/testing."""
+        """Replay sample connection flows for demo/testing."""
         self._ensure_model()
 
-        # Run Zeek on sample PCAP if conn.log is missing
-        if not CONN_LOG.exists():
-            logger.info("conn.log not found. Running Zeek on %s...", SAMPLE_PCAP)
-            if SAMPLE_PCAP.exists():
+        records = []
+        labeled_path = Path("data/samples/labeled_flows.csv")
+        if labeled_path.exists():
+            try:
+                df_labeled = pd.read_csv(labeled_path)
+                if not df_labeled.empty:
+                    records = df_labeled.sort_values(by="ts").to_dict(orient="records")
+            except Exception as e:
+                logger.warning("Could not read labeled_flows.csv: %s", e)
+
+        if not records:
+            # Fallback to conn.log or generate from PCAP
+            if not CONN_LOG.exists() and SAMPLE_PCAP.exists():
+                logger.info("conn.log not found. Running Zeek on %s...", SAMPLE_PCAP)
                 runner = self._init_zeek(CONN_LOG.parent)
                 if runner:
                     try:
                         result = runner.process_pcap(SAMPLE_PCAP)
                         self._update_zeek_run_status(result.success, 10 if result.success else 0)
-                        if result.success:
-                            logger.info("Zeek produced logs: %s", result.logs_produced)
-                        else:
-                            logger.error("Zeek failed: %s", result.stderr[:300])
                     except Exception as e:
                         logger.error("Zeek error: %s", e)
 
-        if not CONN_LOG.exists():
-            logger.error("No conn.log at %s. Cannot start replay.", CONN_LOG)
-            return
+            if CONN_LOG.exists():
+                try:
+                    df_conn = parse_conn_log(CONN_LOG)
+                    if not df_conn.empty:
+                        records = df_conn.sort_values(by="ts").to_dict(orient="records")
+                except Exception as e:
+                    logger.warning("Could not read conn.log: %s", e)
 
-        df = parse_conn_log(CONN_LOG)
-        if df.empty:
-            logger.error("No flows found in %s", CONN_LOG)
+        if not records:
+            logger.error("No replay flows available in data/samples/. Cannot start replay.")
             return
-
-        df_sorted = df.sort_values(by="ts").reset_index(drop=True)
-        records = df_sorted.to_dict(orient="records")
 
         pipeline = self._init_pipeline()
-        logger.info("=== REPLAY MODE (%d flows) ===", len(records))
-
-        gaps = [0.0] + [
-            max(0.0, float(records[i]["ts"]) - float(records[i - 1]["ts"]))
-            for i in range(1, len(records))
-        ]
+        logger.info("=== REPLAY MODE (%d flows loaded) ===", len(records))
 
         loop_count = 0
         while self.running and self.sub_running:
             loop_count += 1
-            logger.info("--- Replay loop #%d ---", loop_count)
-            base_time = time.time()
+            logger.info("--- Replay loop #%d (%d flows) ---", loop_count, len(records))
 
-            for idx, rec in enumerate(records):
+            for rec in records:
                 if not self.running or not self.sub_running:
                     break
-                if gaps[idx] > 0:
-                    time.sleep(gaps[idx] / SPEED_MULTIPLIER)
 
-                curr_ts = base_time + (float(rec["ts"]) - float(records[0]["ts"]))
+                curr_ts = time.time()
                 rec_copy = rec.copy()
                 rec_copy["ts"] = curr_ts
-                if "timestamp" in rec_copy:
-                    rec_copy["timestamp"] = curr_ts
+                rec_copy["timestamp"] = curr_ts
 
                 pipeline.process_record(rec_copy)
                 self.post_flows([rec_copy])
 
+                # Smooth live streaming pace (~3-4 flows per second)
+                time.sleep(0.3)
+
             pipeline.flush()
             self.push_pipeline_stats()
-            logger.info("Replay loop #%d complete. Sleeping 10s.", loop_count)
-            for _ in range(5):
-                if not self.running or not self.sub_running:
-                    break
-                time.sleep(2)
+            logger.info("Replay loop #%d complete. Looping smoothly...", loop_count)
+            time.sleep(1.0)
 
     # ── Configuration Monitor ────────────────────────────────────────
 
