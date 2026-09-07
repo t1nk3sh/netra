@@ -115,7 +115,7 @@ class LiveDetectorSensor:
         return StreamingPipeline(
             window_size_sec=5.0,
             model_path=m_path,
-            ml_threshold=0.35,
+            ml_threshold=0.50,
             alert_callback=self.post_alert,
         )
 

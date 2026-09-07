@@ -14,6 +14,7 @@ from datetime import timezone
 from pathlib import Path
 from typing import Any, Callable, Dict, List
 
+import numpy as np
 import pandas as pd
 
 from alerts.alert_schema import Alert
@@ -24,6 +25,26 @@ from inference.predictor import ThreatPredictor
 from streaming.window_manager import WindowManager
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_int(val: Any, default: int = 0) -> int:
+    """Convert value to int, gracefully handling NaN, None, and non-numeric types."""
+    if val is None or (isinstance(val, float) and not np.isfinite(val)):
+        return default
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
+
+
+def _safe_float(val: Any, default: float = 0.0) -> float:
+    """Convert value to float, gracefully handling NaN, None, and non-numeric types."""
+    if val is None or (isinstance(val, float) and not np.isfinite(val)):
+        return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
 
 
 class StreamingPipeline:
@@ -123,19 +144,30 @@ class StreamingPipeline:
                 for idx, pred in enumerate(ml_predictions):
                     if pred["threat_predicted"]:
                         flow = df.iloc[idx]
+                        flow_dict = flow.to_dict()
+                        threat_subtype = self.predictor.classify_threat_type(flow_dict)
+                        if threat_subtype == "unknown_anomaly":
+                            threat_subtype = "anomaly"
+
+                        evidence = {
+                            "model_type": pred["model_type"],
+                            "threat_subtype": threat_subtype,
+                            "proto": flow.get("proto"),
+                            "dst_port": _safe_int(flow.get("dst_port")),
+                            "duration": _safe_float(flow.get("duration")),
+                            "bytes": _safe_int(flow.get("total_bytes") if _safe_int(flow.get("total_bytes")) else flow.get("orig_bytes")),
+                            "packets": _safe_int(flow.get("total_pkts") if _safe_int(flow.get("total_pkts")) else flow.get("orig_pkts")),
+                        }
+
                         alert = Alert(
                             timestamp=df["timestamp"].iloc[idx] if "timestamp" in df.columns else pd.Timestamp.now(tz=timezone.utc),
                             flow_id=str(flow.get("uid", "")),
-                            threat_class=f"ml_{pred['model_type']}_threat",
+                            threat_class=f"ml_{threat_subtype}",
                             confidence=pred["confidence"],
-                            severity="high" if pred["confidence"] >= 0.8 else "medium",
+                            severity="critical" if pred["confidence"] >= 0.9 else ("high" if pred["confidence"] >= 0.75 else "medium"),
                             source=str(flow.get("src_ip", "unknown")),
                             destination=str(flow.get("dst_ip", "unknown")),
-                            evidence={
-                                "proto": flow.get("proto"),
-                                "dst_port": int(flow.get("dst_port", 0)) if flow.get("dst_port") is not None else 0,
-                                "duration": float(flow.get("duration", 0.0)) if flow.get("duration") is not None else 0.0,
-                            }
+                            evidence=evidence,
                         )
                         window_alerts.append(alert)
             except Exception as e:
